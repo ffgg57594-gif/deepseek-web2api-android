@@ -5,6 +5,8 @@ import com.google.gson.Gson
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.ApplicationEngine
@@ -18,7 +20,6 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.serialization.gson.gson
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
 
 /**
  * Embedded local HTTP server listening on 127.0.0.1:8080.
@@ -93,33 +94,31 @@ class KtorServer(
 
                 if (stream) {
                     call.response.status(HttpStatusCode.OK)
-                    launch {
-                        call.respondTextWriter(ContentType.Text.EventStream) {
-                            client.chatStream(
-                                sessionId = sessionId,
-                                prompt = prompt,
-                                modelType = model,
-                                thinkingEnabled = thinkingEnabled,
-                                searchEnabled = searchEnabled,
-                                parentMessageId = null
-                            ).collect { event ->
-                                when (event) {
-                                    is DeepSeekClient.ChatEvent.Text -> {
-                                        write(sseDelta(event.text))
-                                        flush()
-                                    }
-                                    is DeepSeekClient.ChatEvent.Reasoning -> {
-                                        write(sseDelta("[DEEPSEEK_REASONING]${event.text}"))
-                                        flush()
-                                    }
-                                    DeepSeekClient.ChatEvent.Done -> {
-                                        write("data: [DONE]\n\n")
-                                        flush()
-                                    }
-                                    is DeepSeekClient.ChatEvent.Error -> {
-                                        write("data: ${gson.toJson(mapOf("error" to event.message))}\n\n")
-                                        flush()
-                                    }
+                    call.respondTextWriter(ContentType.Text.EventStream) {
+                        client.chatStream(
+                            sessionId = sessionId,
+                            prompt = prompt,
+                            modelType = model,
+                            thinkingEnabled = thinkingEnabled,
+                            searchEnabled = searchEnabled,
+                            parentMessageId = null
+                        ).collect { event ->
+                            when (event) {
+                                is DeepSeekClient.ChatEvent.Text -> {
+                                    write(sseDelta(event.text))
+                                    flush()
+                                }
+                                is DeepSeekClient.ChatEvent.Reasoning -> {
+                                    write(sseDelta("[DEEPSEEK_REASONING]${event.text}"))
+                                    flush()
+                                }
+                                DeepSeekClient.ChatEvent.Done -> {
+                                    write("data: [DONE]\n\n")
+                                    flush()
+                                }
+                                is DeepSeekClient.ChatEvent.Error -> {
+                                    write("data: ${gson.toJson(mapOf("error" to event.message))}\n\n")
+                                    flush()
                                 }
                             }
                         }
