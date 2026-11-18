@@ -1,9 +1,11 @@
 package com.deepseekweb2api.app
 
 import android.app.Instrumentation
+import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.deepseekweb2api.app.client.DeepSeekClient
+import kotlinx.coroutines.runBlocking
 import org.junit.Assume
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -11,49 +13,40 @@ import org.junit.runner.RunWith
 /**
  * اختبار التكامل الحقيقي مع خدمة DeepSeek Web.
  * يُنفذ فقط إذا كانتcrets DEEPSEEK_AUTH_TOKEN و DEEPSEEK_COOKIE مضبوطة
- * عبر GitHub Secrets أو متغيرات البيئة.
+ * عبر GitHub Secrets وتمريرها كइंस्ट्रूمِنت이션 arguments.
  *
  * لا يُخزن أي أسرار في الكود ولا يطبعها في السجلات.
  */
 @RunWith(AndroidJUnit4::class)
 class DeepSeekIntegrationTest {
 
-    companion object {
-        const val AUTH_TOKEN_ENV = "DEEPSEEK_AUTH_TOKEN"
-        const val COOKIES_ENV = "DEEPSEEK_COOKIE"
-    }
-
-    private fun getEnv(name: String): String? {
-        val instrumentation: Instrumentation = InstrumentationRegistry.getInstrumentation()
-        return instrumentation.context.getString(
-            instrumentation.context.resources.getIdentifier(name, "string", instrumentation.context.packageName)
-        ).takeIf { it.isNotEmpty() }
-            ?: System.getenv(name)
-    }
-
     @Test
     fun realDeepSeekWebIntegration() {
-        val token = getEnv(AUTH_TOKEN_ENV)
-        val cookies = getEnv(COOKIES_ENV)
+        val args = InstrumentationRegistry.getArguments()
+        val token: String? = args.getString("deepseekToken")
+        val cookiesB64: String? = args.getString("deepseekCookiesB64")
+        val cookies: String? = cookiesB64?.let { String(Base64.decode(it, Base64.NO_WRAP)) }
 
         Assume.assumeTrue(
-            "DEEPSEEK_AUTH_TOKEN و DEEPSEEK_COOKIE غير مضبوطة — اختبار التكامل الحقيقي غير مُنفذ (NOT TESTED)",
-            token != null && token.isNotEmpty() && cookies != null && cookies.isNotEmpty()
+            "deepseekToken و deepseekCookiesB64 غير مضبوطة — اختبار التكامل الحقيقي غير مُنفذ (NOT TESTED)",
+            token.isNotNullOrBlank() && cookies.isNotNullOrBlank()
         )
 
         // هذا الجزء يُنفذ فقط إذا كانت البيانات reales موجودة
-        val client = DeepSeekClient.create(token, cookies)
-        val sessionId = client.createSession()
+        val client = DeepSeekClient.create(token!!.trim(), cookies!!.trim())
+        val sessionId = runBlocking { client.createSession() }
         assert(sessionId.isNotEmpty()) { "يجب إنشاء جلسة ناجحة" }
 
-        val result = client.chat(
-            sessionId = sessionId,
-            prompt = "مرحبا، أجب بكلمة واحدة فقط: اختبار",
-            modelType = "deepseek-chat",
-            thinkingEnabled = false,
-            searchEnabled = false,
-            parentMessageId = null
-        )
+        val result = runBlocking {
+            client.chat(
+                sessionId = sessionId,
+                prompt = "مرحبا، أجب بكلمة واحدة فقط: اختبار",
+                modelType = "deepseek-chat",
+                thinkingEnabled = false,
+                searchEnabled = false,
+                parentMessageId = null
+            )
+        }
 
         assert(result.content.isNotEmpty()) { "يجب أن تحتوي الإجابة على محتوى فعلي من DeepSeek Web" }
         // لا نطبع المحتوى في السجلات لحماية الخصوصية

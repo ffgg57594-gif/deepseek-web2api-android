@@ -9,10 +9,10 @@ import com.deepseekweb2api.app.server.LocalApiService
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.junit.After
 import org.junit.Before
@@ -27,12 +27,14 @@ import java.util.concurrent.TimeUnit
 @RunWith(AndroidJUnit4::class)
 class LocalApiTest {
 
+    companion object {
+        const val BASE_URL = "http://127.0.0.1:8080"
+        const val JSON = "application/json".toMediaType()
+    }
+
     private lateinit var context: Context
     private lateinit var client: OkHttpClient
     private val gson = Gson()
-
-    private const val BASE_URL = "http://127.0.0.1:8080"
-    private const val JSON = "application/json".toMediaType()
 
     @Before
     fun setUp() {
@@ -68,7 +70,7 @@ class LocalApiTest {
     private fun post(path: String, body: String): Response {
         val request = Request.Builder()
             .url("$BASE_URL$path")
-            .post(RequestBody.create(body, JSON))
+            .post(body.toRequestBody(JSON))
             .build()
         return client.newCall(request).execute()
     }
