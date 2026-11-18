@@ -17,6 +17,13 @@ jobs:
           distribution: 'zulu'
           java-version: 17
 
+      - name: Debug environment
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
+          which keytool || echo "keytool not found"
+          ls -la
+
       - name: Create debug keystore
         run: keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=AndroidHarness"
 
@@ -41,11 +48,11 @@ jobs:
           yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
           /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
 
-      - name: Build release APK
+      - name: Build release APK (with stacktrace)
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --stacktrace --info
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
