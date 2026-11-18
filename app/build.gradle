@@ -47,6 +47,10 @@ android {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
         }
+        pickFirst 'lib/arm64-v8a/*.so'
+        pickFirst 'lib/armeabi-v7a/*.so'
+        pickFirst 'lib/x86_64/*.so'
+        pickFirst 'lib/x86/*.so'
     }
 }
 
@@ -89,16 +93,4 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.squareup.okhttp3:okhttp-sse:4.12.0'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78'
-}
-
-android {
-    packaging {
-        pickFirst 'lib/arm64-v8a/*.so'
-        pickFirst 'lib/armeabi-v7a/*.so'
-        pickFirst 'lib/x86_64/*.so'
-        pickFirst 'lib/x86/*.so'
-        resources {
-            excludes += '/META-INF/{AL2.0,LGPL2.1}'
-        }
-    }
 }

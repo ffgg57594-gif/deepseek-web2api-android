@@ -70,7 +70,8 @@ jobs:
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
-        run: gradle assembleRelease --stacktrace --info
+          GRADLE_USER_HOME: /tmp/gradle-home
+        run: gradle assembleRelease --stacktrace --info --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
