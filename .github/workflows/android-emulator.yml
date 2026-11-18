@@ -32,6 +32,10 @@ jobs:
           unzip -q /tmp/gradle.zip -d /opt
           echo "/opt/gradle-8.2/bin" >> $GITHUB_PATH
 
+      - name: Compile JVM unit tests
+        run: |
+          gradle compileDebugUnitTestKotlin --stacktrace --info --no-daemon
+
       - name: Run JVM unit tests (PowSolver, SseParser, KtorServer, AccountRepository)
         run: |
           for attempt in 1 2 3; do
