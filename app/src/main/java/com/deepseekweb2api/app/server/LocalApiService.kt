@@ -10,11 +10,17 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.deepseekweb2api.app.MainActivity
-import com.deepseekweb2api.app.R
+import com.deepseekweb2api.app.client.DeepSeekClient
+import com.deepseekweb2api.app.data.AccountRepository
+import com.deepseekweb2api.app.data.CredentialStore
 
 /**
  * Foreground service that keeps the embedded Ktor API server alive while the
  * app is backgrounded, subject to Android battery restrictions.
+ *
+ * The service builds a real [DeepSeekClient] from the first available
+ * credential-bearing account in [AccountRepository] so that
+ * /v1/chat/completions can actually forward to DeepSeek Web.
  */
 class LocalApiService : Service() {
 
@@ -26,21 +32,34 @@ class LocalApiService : Service() {
         const val PORT = 8080
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "deepseek_api_channel"
+
+        @Volatile
+        var accounts: AccountRepository? = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action
-        when {
-            ACTION_START_SERVER == action -> startServerLocked()
-            ACTION_STOP_SERVER == action -> stopServerLocked()
+        when (intent?.action) {
+            ACTION_START_SERVER -> startServerLocked()
+            ACTION_STOP_SERVER -> stopServerLocked()
         }
         return START_NOT_STICKY
+    }
+
+    /** Resolve a real DeepSeek client from the currently configured accounts. */
+    private fun resolveClient(): DeepSeekClient? {
+        val repo = accounts ?: return null
+        val account = repo.nextIdleAccount() ?: return null
+        CredentialStore.init(applicationContext)
+        val token = CredentialStore.getToken(account.id) ?: account.token.takeIf { it.isNotBlank() } ?: return null
+        val cookies = CredentialStore.getCookies(account.id) ?: account.cookies
+        return DeepSeekClient.create(token, cookies)
     }
 
     private fun startServerLocked() {
         val notification = buildNotification("خادم DeepSeek API يعمل", "متاح على 127.0.0.1:$PORT")
         startForeground(NOTIFICATION_ID, notification)
-        server = KtorServer(PORT)
+        val client = resolveClient()
+        server = KtorServer(PORT, client)
         server?.start()
     }
 

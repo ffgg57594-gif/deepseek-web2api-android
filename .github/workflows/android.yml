@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,16 +25,6 @@ jobs:
           wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt
           echo "/opt/gradle-8.2/bin" >> $GITHUB_PATH
-
-      - name: Debug wrapper files
-        run: |
-          echo "=== gradlew ===" && ls -la gradlew 2>/dev/null || echo "gradlew missing"
-          echo "=== settings.gradle ===" && cat settings.gradle
-          echo "=== build.gradle (root) ===" && cat build.gradle
-          echo "=== app/build.gradle ===" && cat app/build.gradle
-
-      - name: Ensure gradlew is executable
-        run: chmod +x gradlew 2>/dev/null || true
 
       - name: Install Android SDK command-line tools
         env:
@@ -54,18 +47,11 @@ jobs:
           yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
           /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
 
-      - name: Gradle version check
-        env:
-          ANDROID_HOME: /opt/android-sdk
-          ANDROID_SDK_ROOT: /opt/android-sdk
-        run: gradle --version
-
       - name: Build debug APK
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
-          GRADLE_USER_HOME: /tmp/gradle-home
-        run: gradle assembleDebug --stacktrace --info --no-daemon
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -77,6 +63,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 

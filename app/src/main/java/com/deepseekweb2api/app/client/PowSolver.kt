@@ -2,7 +2,7 @@ package com.deepseekweb2api.app.client
 
 import android.util.Base64
 import com.google.gson.Gson
-import java.nio.charset.Charsets
+import kotlin.text.Charsets
 import java.security.MessageDigest
 import kotlin.concurrent.thread
 

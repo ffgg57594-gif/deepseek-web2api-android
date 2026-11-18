@@ -1,17 +1,18 @@
 package com.deepseekweb2api.app.server
 
-import com.deepseekweb2api.app.client.ChatEvent
 import com.deepseekweb2api.app.client.DeepSeekClient
-import io.ktor.http.*
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
-import io.ktor.server.contentNegotiation.*
+import io.ktor.server.engine.*
+import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.cio.*
-import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import com.google.gson.Gson
 
 /**
  * Embedded local HTTP server listening on 127.0.0.1:8080.
@@ -31,7 +32,7 @@ class KtorServer(
     private val port: Int,
     private val deepSeekClient: DeepSeekClient? = null
 ) {
-    private var server: ApplicationServer? = null
+    private var server: ApplicationEngine? = null
 
     fun start() {
         server = embeddedServer(
@@ -50,7 +51,7 @@ class KtorServer(
 
     private fun Application.serverModule() {
         install(ContentNegotiation) {
-            json()
+            gson(Gson())
         }
         routing {
             get("/health") {
@@ -97,33 +98,35 @@ class KtorServer(
                             parentMessageId = null
                         ).collect { event ->
                             when (event) {
-                                is ChatEvent.Text -> {
+                                is DeepSeekClient.ChatEvent.Text -> {
                                     val data = mapOf(
                                         "choices" to listOf(mapOf(
                                             "delta" to mapOf("content" to event.text)
                                         ))
                                     )
-                                    call.response.channel.writeText("data: ${gson.toJson(data)}\n\n")
-                                    call.response.channel.flush()
+                                    call.respondTextWriter(ContentType.Text.EventStream) {
+                                        write("data: ${Gson().toJson(data)}\n\n")
+                                    }
                                 }
-                                is ChatEvent.Reasoning -> {
+                                is DeepSeekClient.ChatEvent.Reasoning -> {
                                     val data = mapOf(
                                         "choices" to listOf(mapOf(
                                             "delta" to mapOf("content" to "[DEEPSEEK_REASONING]${event.text}")
                                         ))
                                     )
-                                    call.response.channel.writeText("data: ${gson.toJson(data)}\n\n")
-                                    call.response.channel.flush()
+                                    call.respondTextWriter(ContentType.Text.EventStream) {
+                                        write("data: ${Gson().toJson(data)}\n\n")
+                                    }
                                 }
-                                ChatEvent.Done -> {
-                                    call.response.channel.writeText("data: [DONE]\n\n")
-                                    call.response.channel.flush()
+                                DeepSeekClient.ChatEvent.Done -> {
+                                    call.respondTextWriter(ContentType.Text.EventStream) {
+                                        write("data: [DONE]\n\n")
+                                    }
                                 }
-                                is ChatEvent.Error -> {
-                                    call.response.channel.writeText(
-                                        "data: ${gson.toJson(mapOf("error" to event.message))}\n\n"
-                                    )
-                                    call.response.channel.flush()
+                                is DeepSeekClient.ChatEvent.Error -> {
+                                    call.respondTextWriter(ContentType.Text.EventStream) {
+                                        write("data: ${Gson().toJson(mapOf("error" to event.message))}\n\n")
+                                    }
                                 }
                             }
                         }
@@ -157,6 +160,4 @@ class KtorServer(
             }
         }
     }
-
-    private val gson = com.google.gson.Gson()
 }
