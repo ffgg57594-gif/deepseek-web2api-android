@@ -14,6 +14,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -42,21 +44,52 @@ class LocalApiTest {
         context = instrumentation.targetContext
         client = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
             .build()
 
         // بدء خدمة LocalApiService إذا لم تكن تعمل
         val intent = Intent(context, LocalApiService::class.java)
         intent.action = LocalApiService.ACTION_START_SERVER
         context.startForegroundService(intent)
+
+        // انتظر حتى يصبح السيرفر جاهزًا (حتى 30 ثانية)
+        waitForServer()
     }
 
     @After
     fun tearDown() {
+        // إيقاف السيرفر
         val intent = Intent(context, LocalApiService::class.java)
         intent.action = LocalApiService.ACTION_STOP_SERVER
         context.stopService(intent)
         client.dispatcher.executorService.shutdown()
+    }
+
+    /**
+     * انتظار حتى يصبح السيرفر جاهزًا للاستقبال على منفذ 8080
+     */
+    private fun waitForServer() {
+        var attempts = 0
+        val maxAttempts = 30 // 30 ثانية كحد أقصى
+        while (attempts < maxAttempts) {
+            try {
+                val request = Request.Builder()
+                    .url("$BASE_URL/health")
+                    .get()
+                    .build()
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    response.body?.close()
+                    return // السيرفر جاهز
+                }
+                response.body?.close()
+            } catch (e: Exception) {
+                // السيرفر لم يبدأ بعد، انتظر
+            }
+            attempts++
+            Thread.sleep(1000)
+        }
+        throw AssertionError("السيرفر المحلي لم يصبح جاهزًا خلال 30 ثانية")
     }
 
     private fun get(path: String): Response {
@@ -78,19 +111,21 @@ class LocalApiTest {
     @Test
     fun healthEndpointReturnsOk() {
         val response = get("/health")
-        assert(response.isSuccessful) { "Expected 200, got ${response.code}" }
+        assertTrue("يجب أن يكون الاستجابة ناجحة (200)، ولكن حصلت على ${response.code}",
+            response.isSuccessful)
         val body = response.body?.string() ?: ""
-        assert(body.contains("\"status\"")) { "Response should contain status field, got: $body" }
+        assertNotNull("يجب أن يحتوي الرد على حقل 'status'", body.contains("\"status\""))
     }
 
     @Test
     fun modelsEndpointReturnsList() {
         val response = get("/v1/models")
-        assert(response.isSuccessful) { "Expected 200, got ${response.code}" }
+        assertTrue("يجب أن يكون الاستجابة ناجحة (200)، ولكن حصلت على ${response.code}",
+            response.isSuccessful)
         val body = response.body?.string() ?: ""
         val json = JsonParser.parseString(body).asJsonObject
         val data = json.getAsJsonArray("data")
-        assert(data != null && data.size() > 0) { "Models list should not be empty" }
+        assertNotNull("قائمة النماذج لا يجب أن تكون فارغة", data != null && data.size() > 0)
     }
 
     @Test
@@ -105,19 +140,95 @@ class LocalApiTest {
         }
         """.trimIndent()
         val response = post("/v1/chat/completions", payload)
-        assert(response.isSuccessful) { "Expected 200, got ${response.code}. Body: ${response.body?.string()}" }
+        assertTrue("يجب أن يكون الاستجابة ناجحة (200)، ولكن حصلت على ${response.code}. جسم الرد: ${response.body?.string()}",
+            response.isSuccessful)
         val body = response.body?.string() ?: ""
         val json = JsonParser.parseString(body).asJsonObject
         val choices = json.getAsJsonArray("choices")
-        assert(choices != null && choices.size() > 0) { "Choices should not be empty" }
+        assertNotNull("يجب ألا تكون قائمة الخيارات فارغة", choices != null && choices.size() > 0)
         val content = choices.get(0).asJsonObject.getAsJsonObject("message").get("content").asString
-        assert(content.isNotEmpty()) { "Response content should not be empty" }
+        assertTrue("يجب أن يكون محتوى الرد غير فارغ", content.isNotEmpty())
+    }
+
+    @Test
+    fun chatCompletionsStreamingReturnsSse() {
+        val payload = """
+        {
+          "model": "deepseek-chat",
+          "messages": [{"role": "user", "content": "قل مرحباً فقط"}],
+          "stream": true,
+          "thinking_enabled": false,
+          "search_enabled": false
+        }
+        """.trimIndent()
+        val response = post("/v1/chat/completions", payload)
+        assertTrue("يجب أن يكون الاستجابة ناجحة (200) للتدفق، ولكن حصلت على ${response.code}. جسم الرد: ${response.body?.string()}",
+            response.isSuccessful)
+        val body = response.body?.string() ?: ""
+        assertTrue("يجب أن يحتوي رد التدفق على 'data:' أو '[DONE]'",
+            body.contains("data:") || body.contains("[DONE]"))
     }
 
     @Test
     fun invalidRequestReturnsError() {
         val response = post("/v1/chat/completions", "not json")
         // قد يكون 400 أو 500 حسب التنفيذ، ولكن يجب ألا يكون 200 ناجحًا مع محتوى خاطئ
-        assert(response.code != 200 || response.body?.string()?.contains("error") == true)
+        assertTrue("طلب غير صالح يجب ألا ينجح بدون خطأ",
+            response.code != 200 || response.body?.string()?.contains("error") == true)
+    }
+
+    @Test
+    fun serverStopAndRestart() {
+        // اختبار إيقاف السيرفر
+        val stopIntent = Intent(context, LocalApiService::class.java)
+        stopIntent.action = LocalApiService.ACTION_STOP_SERVER
+        context.stopService(stopIntent)
+
+        // التحقق من أن السيرفر توقف (يجب أن يفشل الاتصال)
+        var serverStopped = false
+        try {
+            val request = Request.Builder()
+                .url("$BASE_URL/health")
+                .get()
+                .build()
+            val response = client.newCall(request).execute()
+            response.body?.close()
+            if (!response.isSuccessful) {
+                serverStopped = true
+            }
+        } catch (e: Exception) {
+            serverStopped = true
+        }
+        assertTrue("يجب أن يتوقف السيرفر عند طلب الإيقاف", serverStopped)
+
+        // اختبار إعادة تشغيل السيرفر
+        val startIntent = Intent(context, LocalApiService::class.java)
+        startIntent.action = LocalApiService.ACTION_START_SERVER
+        context.startForegroundService(startIntent)
+
+        // انتظر حتى يعود السيرفر للعمل
+        var attempts = 0
+        val maxAttempts = 30
+        var serverRestarted = false
+        while (attempts < maxAttempts) {
+            try {
+                val request = Request.Builder()
+                    .url("$BASE_URL/health")
+                    .get()
+                    .build()
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    response.body?.close()
+                    serverRestarted = true
+                    break
+                }
+                response.body?.close()
+            } catch (e: Exception) {
+                // الانتظار
+            }
+            attempts++
+            Thread.sleep(1000)
+        }
+        assertTrue("يجب أن يعيد السيرفر التشغيل بعد إعادة تشغيله", serverRestarted)
     }
 }

@@ -7,6 +7,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -31,7 +33,8 @@ class AppLaunchTest {
         val instrumentation: Instrumentation = InstrumentationRegistry.getInstrumentation()
         device = UiDevice.getInstance(instrumentation)
         // انتظر حتى تظهر الشاشة الرئيسية
-        device.wait(Until.hasObject(By.text("لوحة المعلومات")), 30_000)
+        assertTrue("الشاشة الرئيسية يجب أن تظهر خلال 30 ثانية",
+            device.wait(Until.hasObject(By.text("لوحة المعلومات")), 30_000))
     }
 
     @After
@@ -41,31 +44,40 @@ class AppLaunchTest {
 
     @Test
     fun appOpensWithoutCrash() {
-        // التحقق من ظهور عنوان الشاشة الرئيسية
-        assert(device.findObject(By.text("لوحة информации")) != null)
-        assert(device.findObject(By.text("إدارة الحسابات")) != null)
-        assert(device.findObject(By.text("التحكم بالخادم")) != null)
+        // التحقق من ظهور عنوان الشاشة الرئيسية باستخدام JUnit assertions
+        assertNotNull("عنوان 'لوحة المعلومات' يجب أن يظهر",
+            device.findObject(By.text("لوحة المعلومات")))
+        assertNotNull("عنوان 'إدارة الحسابات' يجب أن يظهر",
+            device.findObject(By.text("إدارة الحسابات")))
+        assertNotNull("عنوان 'التحكم بالخادم' يجب أن يظهر",
+            device.findObject(By.text("التحكم بالخادم")))
     }
 
     @Test
     fun navigateToServerControlAndBack() {
         // انقر على "التحكم بالخادم"
         device.findObject(By.text("التحكم بالخادم")).click()
-        device.wait(Until.hasObject(By.text("بدء الخادم")), 10_000)
-        assert(device.findObject(By.text("بدء الخادم")) != null)
+        assertTrue("شاشة 'التحكم بالخادم' يجب أن تظهر خلال 10 ثوانٍ",
+            device.wait(Until.hasObject(By.text("بدء الخادم")), 10_000))
+        assertNotNull("زر 'بدء الخادم' يجب أن يظهر",
+            device.findObject(By.text("بدء الخادم")))
 
         // ارجع للشاشة الرئيسية
         device.pressBack()
-        device.wait(Until.hasObject(By.text("لوحة Informationen")), 10_000)
+        assertTrue("الشاشة الرئيسية يجب أن تظهر خلال 10 ثوانٍ",
+            device.wait(Until.hasObject(By.text("لوحة المعلومات")), 10_000))
     }
 
     @Test
     fun navigateToAccountsAndBack() {
         device.findObject(By.text("إدارة الحسابات")).click()
-        device.wait(Until.hasObject(By.text("إضافة حساب")), 10_000)
-        assert(device.findObject(By.text("إضافة حساب")) != null)
+        assertTrue("شاشة 'إدارة الحسابات' يجب أن تظهر خلال 10 ثوانٍ",
+            device.wait(Until.hasObject(By.text("إضافة حساب")), 10_000))
+        assertNotNull("زر 'إضافة حساب' يجب أن يظهر",
+            device.findObject(By.text("إضافة حساب")))
 
         device.pressBack()
-        device.wait(Until.hasObject(By.text("لوحة Informationen")), 10_000)
+        assertTrue("الشاشة الرئيسية يجب أن تظهر خلال 10 ثوانٍ",
+            device.wait(Until.hasObject(By.text("لوحة المعلومات")), 10_000))
     }
 }

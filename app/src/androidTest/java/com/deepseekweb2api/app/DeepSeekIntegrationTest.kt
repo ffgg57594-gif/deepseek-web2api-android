@@ -12,8 +12,8 @@ import org.junit.runner.RunWith
 
 /**
  * اختبار التكامل الحقيقي مع خدمة DeepSeek Web.
- * يُنفذ فقط إذا كانتcrets DEEPSEEK_AUTH_TOKEN و DEEPSEEK_COOKIE مضبوطة
- * عبر GitHub Secrets وتمريرها كइंस्ट्रूمِنت이션 arguments.
+ * يُنفذ فقط إذا كانتسرا DEEPSEEK_AUTH_TOKEN و DEEPSEEK_COOKIE مضبوطة
+ * عبر GitHub Secrets وتمريرها كInstrumentation Arguments.
  *
  * لا يُخزن أي أسرار في الكود ولا يطبعها في السجلات.
  */
@@ -27,13 +27,14 @@ class DeepSeekIntegrationTest {
         val cookiesB64: String? = args.getString("deepseekCookiesB64")
         val cookies: String? = cookiesB64?.let { String(Base64.decode(it, Base64.NO_WRAP)) }
 
+        // إذا لم توجد سرر، נסجل NOT TESTED ونترك الاختبار يتخطى نفسه
         Assume.assumeTrue(
-            "deepseekToken و deepseekCookiesB64 غير مضبوطة — اختبار التكامل الحقيقي غير مُنفذ (NOT TESTED)",
-            token?.isNotEmpty() == true && cookies?.isNotEmpty() == true
+            "deepseekToken و deepseekCookiesB64 غير مضبوطة — اختبار التكامل الحقيقي غير منفذ (NOT TESTED)",
+            token.isNotEmpty() && cookies.isNotEmpty()
         )
 
         // هذا الجزء يُنفذ فقط إذا كانت البيانات reales موجودة
-        val client = DeepSeekClient.create(token!!.trim(), cookies!!.trim())
+        val client = DeepSeekClient.create(token.trim(), cookies.trim())
         val sessionId = runBlocking { client.createSession() }
         assert(sessionId.isNotEmpty()) { "يجب إنشاء جلسة ناجحة" }
 
