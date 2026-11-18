@@ -61,9 +61,15 @@ class PowSolver {
                     "target_path" to challenge.targetPath
                 )
                 val json = gson.toJson(payload)
+                val jsonBytes = json.toByteArray(Charsets.UTF_8)
+                val encoded = try {
+                    java.util.Base64.getEncoder().encodeToString(jsonBytes)
+                } catch (e: Throwable) {
+                    android.util.Base64.encodeToString(jsonBytes, android.util.Base64.NO_WRAP)
+                }
                 return Solution(
                     answer = nonce,
-                    headerValue = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                    headerValue = encoded
                 )
             }
             nonce++

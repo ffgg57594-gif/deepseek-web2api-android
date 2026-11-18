@@ -20,7 +20,7 @@ class PowSolverTest {
             challenge = "test-challenge-123",
             salt = "test-salt",
             expireAt = System.currentTimeMillis() + 3600_000,
-            difficulty = 8, // 1 byte zero = fast test target (~256 iterations)
+            difficulty = 4, // 4 bits zero = very fast test target (~16 iterations)
             signature = "test-signature",
             targetPath = "/api/v0/chat/completion"
         )
@@ -77,7 +77,7 @@ class PowSolverTest {
             challenge = "high-difficulty-test",
             salt = "salt",
             expireAt = System.currentTimeMillis() + 3600_000,
-            difficulty = 16, // هدف صعب أكثر
+            difficulty = 8, // 8 bits zero = ~256 iterations, fast and reliable
             signature = "sig",
             targetPath = "/api/v0/chat/completion"
         )
