@@ -50,6 +50,10 @@ android {
         pickFirst 'lib/x86_64/*.so'
         pickFirst 'lib/x86/*.so'
     }
+
+    test {
+        useJUnitPlatform()
+    }
 }
 
 dependencies {
@@ -85,6 +89,7 @@ dependencies {
 
     // Test dependencies (JVM unit tests)
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit4:1.9.22'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0'
 
     // Test dependencies (Android instrumented tests)
