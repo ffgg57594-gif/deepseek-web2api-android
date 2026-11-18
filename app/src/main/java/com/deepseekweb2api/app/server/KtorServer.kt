@@ -36,7 +36,7 @@ class KtorServer(
     private val port: Int,
     private val deepSeekClient: DeepSeekClient? = null
 ) {
-    private var server: ApplicationEngine? = null
+    internal var server: ApplicationEngine? = null
     private val gson = Gson()
 
     fun start() {

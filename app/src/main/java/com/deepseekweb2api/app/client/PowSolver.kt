@@ -71,9 +71,9 @@ class PowSolver {
         }
     }
 
-    private fun coerceDifficulty(difficulty: Int): Int = difficulty.coerceIn(0, 254)
+    internal fun coerceDifficulty(difficulty: Int): Int = difficulty.coerceIn(0, 254)
 
-    private fun difficultyTarget(bits: Int): ByteArray {
+    internal fun difficultyTarget(bits: Int): ByteArray {
         val target = ByteArray(32) { 0xFF.toByte() }
         val fullBytes = bits / 8
         val remBits = bits % 8
@@ -84,7 +84,7 @@ class PowSolver {
         return target
     }
 
-    private fun hashMeetsTarget(hash: ByteArray, target: ByteArray): Boolean {
+    internal fun hashMeetsTarget(hash: ByteArray, target: ByteArray): Boolean {
         for (i in hash.indices) {
             val h = hash[i].toInt() and 0xFF
             val t = target[i].toInt() and 0xFF
@@ -94,7 +94,7 @@ class PowSolver {
         return false
     }
 
-    private fun sha3_256(input: ByteArray): ByteArray {
+    internal fun sha3_256(input: ByteArray): ByteArray {
         val digest = MessageDigest.getInstance("SHA3-256")
         return digest.digest(input)
     }
