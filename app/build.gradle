@@ -40,7 +40,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = '1.5.11'
+        kotlinCompilerExtensionVersion = '1.5.8'
     }
 
     packaging {
@@ -72,9 +72,8 @@ dependencies {
     implementation 'androidx.compose.material:material-icons-extended:1.6.8'
 
     implementation 'io.ktor:ktor-server-core:2.3.7'
-    implementation 'io.ktor:ktor-server-netty:2.3.7'
-    implementation 'io.ktor:ktor-server-content-negotiation:2.3.7'
     implementation 'io.ktor:ktor-server-cio:2.3.7'
+    implementation 'io.ktor:ktor-server-content-negotiation:2.3.7'
     implementation 'io.ktor:ktor-server-host-common:2.3.7'
     implementation 'io.ktor:ktor-client-core:2.3.7'
     implementation 'io.ktor:ktor-client-okhttp:2.3.7'
@@ -98,5 +97,8 @@ android {
         pickFirst 'lib/armeabi-v7a/*.so'
         pickFirst 'lib/x86_64/*.so'
         pickFirst 'lib/x86/*.so'
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
     }
 }

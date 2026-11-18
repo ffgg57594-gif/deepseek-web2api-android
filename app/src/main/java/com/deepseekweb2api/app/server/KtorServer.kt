@@ -8,7 +8,7 @@ import io.ktor.server.contentNegotiation.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.server.netty.*
+import io.ktor.server.cio.*
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -23,6 +23,9 @@ import kotlinx.coroutines.launch
  *
  * Streams SSE when `stream: true`, otherwise returns a single JSON completion.
  * Supports DeepThink (reasoning) and Web Search flags.
+ *
+ * Uses CIO (Coroutine-based IO) engine instead of Netty because Netty bundles
+ * native libraries that are not readily available for Android ARM64.
  */
 class KtorServer(
     private val port: Int,
@@ -32,7 +35,7 @@ class KtorServer(
 
     fun start() {
         server = embeddedServer(
-            Netty,
+            CIO,
             host = "127.0.0.1",
             port = port,
             module = Application::serverModule
