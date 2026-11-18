@@ -25,6 +25,10 @@ import com.deepseekweb2api.app.data.CredentialStore
 class LocalApiService : Service() {
 
     private var server: KtorServer? = null
+    @Volatile private var isRunningFlag = false
+
+    /** يُرجع true إذا كان الخادم المحلي يعمل حالياً (للاختبار والمراقبة). */
+    fun isServerRunning(): Boolean = isRunningFlag
 
     companion object {
         const val ACTION_START_SERVER = "com.deepseekweb2api.app.action.START_SERVER"
@@ -61,11 +65,13 @@ class LocalApiService : Service() {
         val client = resolveClient()
         server = KtorServer(PORT, client)
         server?.start()
+        isRunningFlag = true
     }
 
     private fun stopServerLocked() {
         server?.stop()
         server = null
+        isRunningFlag = false
         stopForeground(true)
         stopSelf()
     }
