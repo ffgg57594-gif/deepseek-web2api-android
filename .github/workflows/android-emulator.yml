@@ -11,8 +11,43 @@ permissions:
   contents: read
 
 jobs:
+  jvm-unit-tests:
+    name: JVM Unit Tests (no emulator)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - name: Install Gradle 8.2
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-8.2/bin" >> $GITHUB_PATH
+
+      - name: Run JVM unit tests (PowSolver, SseParser, KtorServer, AccountRepository)
+        run: |
+          gradle test --stacktrace --no-daemon
+
+      - name: Upload JVM test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jvm-test-reports
+          path: app/build/reports/tests/test/**
+          retention-days: 7
+
   emulator-functional-tests:
-    runs-on: ubuntu-latest
+    name: Android Emulator Functional Tests
+    needs: jvm-unit-tests
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     steps:
@@ -53,7 +88,24 @@ jobs:
           ANDROID_SDK_ROOT: /opt/android-sdk
         run: |
           yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
-          /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "platforms;android-30" "build-tools;34.0.0" "system-images;android-30;google_apis;x86_64" "emulator"
+          /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "platforms;android-30" \
+            "build-tools;34.0.0" \
+            "system-images;android-30;google_apis;x86_64" \
+            "emulator"
+
+      - name: Check KVM availability
+        id: kvm-check
+        run: |
+          if ls /dev/kvm >/dev/null 2>&1; then
+            echo "kvm_available=true" >> $GITHUB_OUTPUT
+            echo "KVM is available — hardware acceleration enabled"
+          else
+            echo "kvm_available=false" >> $GITHUB_OUTPUT
+            echo "KVM is NOT available — will use software rendering"
+          fi
 
       - name: Build debug APK
         env:
@@ -87,21 +139,36 @@ jobs:
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
+          KVM_AVAILABLE: ${{ steps.kvm-check.outputs.kvm_available }}
         run: |
+          if [ "$KVM_AVAILABLE" = "true" ]; then
+            ACCEL_ARGS="-accel on"
+            echo "Using KVM hardware acceleration"
+          else
+            ACCEL_ARGS="-accel off -qemu -enable-kvm -m 1536"
+            echo "Using software rendering (no KVM)"
+          fi
+
           nohup /opt/android-sdk/emulator/emulator -avd test_avd \
             -no-snapshot -no-window -no-audio -no-boot-anim \
-            -qemu -enable-kvm -m 1536 > emulator.log 2>&1 &
+            $ACCEL_ARGS > emulator.log 2>&1 &
           echo "Emulator started, waiting for boot (up to 5 minutes)..."
+
+          BOOTED=false
           for i in $(seq 1 60); do
             if /opt/android-sdk/platform-tools/adb wait-for-device shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
-              echo "Emulator booted successfully"
-              exit 0
+              echo "Emulator booted successfully after $((i * 5)) seconds"
+              BOOTED=true
+              break
             fi
             sleep 5
           done
-          echo "Emulator failed to boot within 5 minutes"
-          cat emulator.log
-          exit 1
+
+          if [ "$BOOTED" = "false" ]; then
+            echo "Emulator failed to boot within 5 minutes"
+            cat emulator.log
+            exit 1
+          fi
 
       - name: Install debug APK on emulator
         env:
@@ -125,14 +192,14 @@ jobs:
           DEEPSEEK_AUTH_TOKEN: ${{ secrets.DEEPSEEK_AUTH_TOKEN }}
           DEEPSEEK_COOKIE: ${{ secrets.DEEPSEEK_COOKIE }}
         run: |
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             echo "=== Test attempt $attempt ==="
             if gradle connectedAndroidTest --stacktrace --no-daemon; then
               echo "TESTS SUCCEEDED on attempt $attempt"
               exit 0
             fi
             echo "Test attempt $attempt failed; sleeping before retry..."
-            sleep $((attempt * 20))
+            sleep 30
           done
           echo "All test attempts failed"
           exit 1
@@ -155,3 +222,4 @@ jobs:
             app/build/reports/androidTests/connected/**
             app/build/outputs/androidTest-results/**
             logcat_failure.txt
+          retention-days: 7
