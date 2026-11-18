@@ -51,7 +51,18 @@ jobs:
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
-        run: gradle assembleDebug --stacktrace
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "=== Gradle attempt $attempt ==="
+            if gradle assembleDebug --stacktrace --no-daemon; then
+              echo "BUILD SUCCEEDED on attempt $attempt"
+              exit 0
+            fi
+            echo "Attempt $attempt failed; sleeping before retry..."
+            sleep $((attempt * 30))
+          done
+          echo "All build attempts failed"
+          exit 1
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
