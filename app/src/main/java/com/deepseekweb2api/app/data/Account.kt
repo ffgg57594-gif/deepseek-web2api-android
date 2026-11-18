@@ -11,7 +11,7 @@ data class Account(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
-    class Builder(private val base: Account?) {
+    class Builder(private val base: Account? = null) {
         private var id: String = base?.id ?: java.util.UUID.randomUUID().toString()
         private var email: String? = base?.email
         private var token: String = base?.token ?: ""
