@@ -83,14 +83,14 @@ jobs:
           target: default
           arch: x86_64
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            ./gradlew connectedAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.deepseekToken="$DEEPSEEK_TOKEN" \
+              -Pandroid.testInstrumentationRunnerArguments.deepseekCookiesB64="$DEEPSEEK_COOKIES_B64" \
+              --stacktrace --no-daemon
         env:
           DEEPSEEK_TOKEN: ${{ secrets.deepseek_token }}
           DEEPSEEK_COOKIES_B64: ${{ env.DEEPSEEK_COOKIES_B64 }}
-        script: |
-          ./gradlew connectedAndroidTest \
-            -Pandroid.testInstrumentationRunnerArguments.deepseekToken="$DEEPSEEK_TOKEN" \
-            -Pandroid.testInstrumentationRunnerArguments.deepseekCookiesB64="$DEEPSEEK_COOKIES_B64" \
-            --stacktrace --no-daemon
 
       - name: Pull logcat on failure
         if: failure()
