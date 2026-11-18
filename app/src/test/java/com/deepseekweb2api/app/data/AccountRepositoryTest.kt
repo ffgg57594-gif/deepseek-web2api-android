@@ -76,7 +76,7 @@ class AccountRepositoryTest {
 
         val next = repo.nextIdleAccount()
         assertTrue("يجب إرجاع حساب بحالة idle", next != null && next.state == "idle")
-        assertTrue("يجب أن يكون أحد الحسابات الخاملة", listOf(idle1.id, idle2.id).contains(next.id))
+        assertTrue("يجب أن يكون أحد الحسابات الخاملة", listOf(idle1.id, idle2.id).contains(next?.id))
     }
 
     @Test
