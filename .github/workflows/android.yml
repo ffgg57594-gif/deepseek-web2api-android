@@ -17,17 +17,20 @@ jobs:
           distribution: 'zulu'
           java-version: 17
 
-      - name: Debug environment
+      - name: Debug wrapper files
         run: |
-          echo "JAVA_HOME=$JAVA_HOME"
-          java -version
-          which keytool || echo "keytool not found"
-          ls -la
-          ls -la gradlew
-          ls -la gradle/wrapper/
+          echo "=== gradlew ===" && ls -la gradlew && head -5 gradlew
+          echo "=== gradle/wrapper ===" && ls -la gradle/wrapper/
+          echo "=== gradle-wrapper.properties ===" && cat gradle/wrapper/gradle-wrapper.properties
+          echo "=== settings.gradle ===" && cat settings.gradle
+          echo "=== build.gradle (root) ===" && cat build.gradle
+          echo "=== app/build.gradle ===" && cat app/build.gradle
 
       - name: Ensure gradlew is executable
         run: chmod +x gradlew
+
+      - name: Gradle version check (stacktrace)
+        run: ./gradlew --version --stacktrace
 
       - name: Create debug keystore
         run: keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=AndroidHarness"
@@ -55,12 +58,6 @@ jobs:
         run: |
           yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
           /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
-
-      - name: Gradle version check (stacktrace)
-        env:
-          ANDROID_HOME: /opt/android-sdk
-          ANDROID_SDK_ROOT: /opt/android-sdk
-        run: ./gradlew --version --stacktrace
 
       - name: Build release APK (with stacktrace)
         env:
