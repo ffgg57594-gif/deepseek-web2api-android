@@ -18,3 +18,5 @@ captures/
 gemini-web2api-android/
 .codegraph/
 .harness/
+logs*
+logs*/
