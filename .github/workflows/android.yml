@@ -33,12 +33,6 @@ jobs:
       - name: Ensure gradlew is executable
         run: chmod +x gradlew 2>/dev/null || true
 
-      - name: Create debug keystore
-        run: keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=AndroidHarness"
-
-      - name: Verify keystore exists
-        run: ls -la debug.keystore && file debug.keystore
-
       - name: Install Android SDK command-line tools
         env:
           ANDROID_HOME: /opt/android-sdk
@@ -66,18 +60,18 @@ jobs:
           ANDROID_SDK_ROOT: /opt/android-sdk
         run: gradle --version
 
-      - name: Build release APK
+      - name: Build debug APK
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
           GRADLE_USER_HOME: /tmp/gradle-home
-        run: gradle assembleRelease --stacktrace --info --no-daemon
+        run: gradle assembleDebug --stacktrace --info --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
 
   release:
     needs: build
@@ -89,7 +83,7 @@ jobs:
       - name: Download APK
         uses: actions/download-artifact@v4
         with:
-          name: app-release-apk
+          name: app-debug-apk
 
       - name: Create GitHub Release
         env:
@@ -97,5 +91,5 @@ jobs:
         run: |
           gh release create "v${{ github.run_number }}" \
             --title "DeepSeek Web2API v${{ github.run_number }}" \
-            --notes "Complete native Kotlin Android APK (no Python, Node.js, WebView, or external server). Built via GitHub Actions." \
-            app-release.apk
+            --notes "Complete native Kotlin Android APK (debug, no Python, Node.js, WebView, or external server). Built via GitHub Actions." \
+            app-debug.apk
