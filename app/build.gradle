@@ -50,10 +50,6 @@ android {
         pickFirst 'lib/x86_64/*.so'
         pickFirst 'lib/x86/*.so'
     }
-
-    test {
-        useJUnitPlatform()
-    }
 }
 
 dependencies {
