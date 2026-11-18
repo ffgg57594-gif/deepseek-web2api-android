@@ -1,5 +1,6 @@
 package com.deepseekweb2api.app.ui.navigation
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Box
 import androidx.compose.material3.Icon
@@ -13,12 +14,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.deepseekweb2api.app.client.DeepSeekClient
 import com.deepseekweb2api.app.data.Account
 import com.deepseekweb2api.app.data.AccountRepository
 import com.deepseekweb2api.app.server.KtorServer
+import com.deepseekweb2api.app.ui.screens.AddEditAccountScreen
+import com.deepseekweb2api.app.ui.screens.ApiConfigScreen
 import com.deepseekweb2api.app.ui.screens.AccountManagerScreen
 import com.deepseekweb2api.app.ui.screens.DashboardScreen
+import com.deepseekweb2api.app.ui.screens.LogsScreen
+import com.deepseekweb2api.app.ui.screens.ModelSelectionScreen
+import com.deepseekweb2api.app.ui.screens.SettingsScreen
 import com.deepseekweb2api.app.ui.screens.ServerControlScreen
+import com.deepseekweb2api.app.ui.screens.StatisticsScreen
 import com.deepseekweb2api.app.ui.theme.DeepSeekTheme
 
 sealed class Screen {
@@ -55,6 +63,7 @@ fun AppNavigation() {
 
     var server by remember { mutableStateOf<KtorServer?>(null) }
     var isRunning by remember { mutableStateOf(false) }
+    var deepSeekClient by remember { mutableStateOf<DeepSeekClient?>(null) }
 
     fun push(s: Screen) { navStack = navStack + s }
     fun pop() { if (navStack.size > 1) navStack = navStack.dropLast(1) }
@@ -89,21 +98,42 @@ fun AppNavigation() {
                         accounts = accounts,
                         onTest = { acct ->
                             repo.value.setState(acct.id, "busy")
-                            // TODO: wire to DeepSeekClient test call
-                            repo.value.setState(acct.id, "idle")
+                            try {
+                                val client = deepSeekClient.value ?: DeepSeekClient.create(
+                                    acct.token,
+                                    acct.cookies
+                                )
+                                deepSeekClient.value = client
+                                client.createSession()
+                                repo.value.setState(acct.id, "idle")
+                                Toast.makeText(
+                                    androidx.compose.ui.platform.LocalContext.current,
+                                    "الحساب سليم",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } catch (e: Exception) {
+                                repo.value.setState(acct.id, "error", e.message)
+                            }
                         },
                         onDelete = { acct -> repo.value.remove(acct.id) }
                     )
-                    Screen.AddAccount -> placeholder("إضافة حساب")
-                    Screen.Models -> placeholder("النماذج")
-                    Screen.ApiConfig -> placeholder("إعدادات API")
+                    Screen.AddAccount -> AddEditAccountScreen(
+                        onBack = { pop() },
+                        repo = repo.value,
+                        onSaved = { pop() }
+                    )
+                    Screen.Models -> ModelSelectionScreen(
+                        onBack = { pop() },
+                        onSelect = {}
+                    )
+                    Screen.ApiConfig -> ApiConfigScreen(onBack = { pop() })
                     Screen.ServerControl -> ServerControlScreen(
                         onBack = { pop() },
                         server = server,
                         isRunning = isRunning,
                         onToggle = {
                             if (!isRunning) {
-                                server = KtorServer(8080)
+                                server = KtorServer(8080, deepSeekClient.value)
                                 server?.start()
                                 isRunning = true
                             } else {
@@ -113,22 +143,14 @@ fun AppNavigation() {
                             }
                         }
                     )
-                    Screen.Statistics -> placeholder("الإحصائيات")
-                    Screen.Logs -> placeholder("السجلات")
-                    Screen.Settings -> placeholder("الإعدادات")
+                    Screen.Statistics -> StatisticsScreen(
+                        onBack = { pop() },
+                        stats = repo.value.stats
+                    )
+                    Screen.Logs -> LogsScreen(onBack = { pop() })
+                    Screen.Settings -> SettingsScreen(onBack = { pop() })
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun placeholder(title: String) {
-    androidx.compose.foundation.layout.Column(
-        modifier = androidx.compose.foundation.layout.fillMaxSize(),
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
-    ) {
-        Text(text = "شاشة $title — قيد الاستكمال", style = MaterialTheme.typography.bodyLarge)
     }
 }

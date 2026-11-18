@@ -1,0 +1,54 @@
+package com.deepseekweb2api.app.ui.screens
+
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun ApiConfigScreen(
+    onBack: () -> Unit,
+    baseUrl: String = "http://127.0.0.1:8080/v1",
+    apiKey: String = "deepseek-web2api-local",
+    onConfigChanged: (String, String) -> Unit = { _, _ -> }
+) {
+    val ctx = LocalContext.current
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text(text = "إعدادات API", style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(text = "الرابط الأساسي (Base URL)", style = MaterialTheme.typography.bodyMedium)
+        Text(text = baseUrl, style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.height(12.dp))
+        Row {
+            Button(onClick = { copyClip(ctx, baseUrl); Toast.makeText(ctx, "تم نسخ الرابط", Toast.LENGTH_SHORT).show() }) {
+                Text(text = "نسخ الرابط")
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(onClick = { copyClip(ctx, apiKey); Toast.makeText(ctx, "تم نسخ المفتاح", Toast.LENGTH_SHORT).show() }) {
+                Text(text = "نسخ المفتاح")
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(text = "مفتاح API", style = MaterialTheme.typography.bodyMedium)
+        Text(text = apiKey, style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.height(24.dp))
+        TextButton(onClick = onBack) { Text(text = "الرجوع") }
+    }
+}
+
+private fun copyClip(ctx: Context, text: String) {
+    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    cm.setPrimaryClip(android.content.ClipData.newPlainText("deepseek-api", text))
+}

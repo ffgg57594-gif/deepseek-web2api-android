@@ -1,0 +1,346 @@
+package com.deepseekweb2api.app.client
+
+import okhttp3.MediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.Response
+import okhttp3.sse.EventSource
+import okhttp3.sse.EventSourceFactory
+import okhttp3.sse.EventSourceListener
+import kotlinx.coroutines.callbackFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
+import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+
+/**
+ * DeepSeek Web protocol client.
+ *
+ * Reimplements the upstream adapter behavior over OkHttp with zero WebView,
+ * zero Python, and zero Node.js:
+ *   - Authorization + Cookie headers from manually-supplied credentials
+ *   - Proof-of-Work challenge / solve (DeepSeekHashV1)
+ *   - Session creation and continuation (parent_message_id)
+ *   - Streaming and non-streaming chat completion
+ *   - DeepThink (reasoning) and Web Search flags
+ *
+ * Endpoints and payloads are copied verbatim from the upstream adapter:
+ *   POST https://chat.deepseek.com/api/v0/chat/create_pow_challenge
+ *   POST https://chat.deepseek.com/api/v0/chat_session/create
+ *   POST https://chat.deepseek.com/api/v0/chat/completion
+ */
+class DeepSeekClient private constructor(
+    private val client: OkHttpClient,
+    private val gson: Gson,
+    private val token: String,
+    private val cookies: String?,
+    private val powSolver: PowSolver
+) {
+    companion object {
+        const val BASE_URL = "https://chat.deepseek.com"
+
+        fun create(token: String, cookies: String? = null): DeepSeekClient =
+            DeepSeekClient(
+                OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(120, TimeUnit.SECONDS)
+                    .writeTimeout(30, TimeUnit.SECONDS)
+                    .build(),
+                Gson(),
+                token,
+                cookies,
+                PowSolver()
+            )
+    }
+
+    private val authHeader: String
+        get() = if (token.startsWith("Bearer ", ignoreCase = true)) token else "Bearer $token"
+
+    private fun jsonBody(map: Map<String, Any?>): RequestBody =
+        RequestBody.create(
+            gson.toJson(map).toByteArray(),
+            MediaType.Companion.parse("application/json")!!
+        )
+
+    /** Base headers captured from a real chat.deepseek.com session (no PoW). */
+    private fun baseHeaders(path: String): okhttp3.Headers.Builder {
+        val b = okhttp3.Headers.Builder()
+            .add("Authorization", authHeader)
+        cookies?.let { b.add("Cookie", it) }
+        b.add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+            .add("Accept", "*/*")
+            .add("Accept-Encoding", "gzip, deflate, br, zstd")
+            .add("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
+            .add("Content-Type", "application/json")
+            .add("Origin", "https://chat.deepseek.com")
+            .add("Referer", "https://chat.deepseek.com/")
+            .add("X-Client-Version", "2.3.0")
+            .add("X-Client-Platform", "web")
+            .add("X-Client-Locale", "zh_CN")
+            .add("X-Client-Timezone-Offset", "28800")
+            .add("x-client-bundle-id", "com.deepseek.chat")
+            .add("Priority", "u=1, i")
+            .add("Sec-Ch-Ua", "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"")
+            .add("Sec-Ch-Ua-Mobile", "?0")
+            .add("Sec-Ch-Ua-Platform", "\"Windows\"")
+            .add("Sec-Fetch-Dest", "empty")
+            .add("Sec-Fetch-Mode", "cors")
+            .add("Sec-Fetch-Site", "same-origin")
+        return b
+    }
+
+    /** Headers including a freshly solved Proof-of-Work for the given target path. */
+    private suspend fun powHeaders(path: String): okhttp3.Headers {
+        val challenge = fetchPowChallenge(path)
+        val solution = powSolver.solve(challenge)
+        return baseHeaders(path)
+            .add("X-DS-PoW-Response", solution.headerValue)
+            .build()
+    }
+
+    private suspend fun fetchPowChallenge(path: String): PowSolver.Challenge {
+        val request = Request.Builder()
+            .url("$BASE_URL/api/v0/chat/create_pow_challenge")
+            .post(jsonBody(mapOf("target_path" to path)))
+            .headers(baseHeaders(path))
+            .build()
+        return client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("pow challenge failed: ${response.code}")
+            val obj = JsonParser.parseString(response.body()!!.string()).asJsonObject
+            val biz = obj.getAsJsonObject("data").getAsJsonObject("biz_data")
+            PowSolver.Challenge(
+                challenge = biz.get("challenge").asString,
+                salt = biz.get("salt").asString,
+                expireAt = biz.get("expire_at").asLong,
+                difficulty = biz.get("difficulty").asInt,
+                signature = biz.get("signature").asString,
+                targetPath = biz.get("target_path").asString
+            )
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Session
+    // ------------------------------------------------------------------
+
+    suspend fun createSession(): String = withContext(Dispatchers.IO) {
+        val headers = powHeaders("/api/v0/chat/completion")
+        val request = Request.Builder()
+            .url("$BASE_URL/api/v0/chat_session/create")
+            .post(jsonBody(mapOf("target_path" to "/api/v0/chat/completion")))
+            .headers(headers)
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("create_session failed: ${response.code}")
+            val obj = JsonParser.parseString(response.body()!!.string()).asJsonObject
+            val biz = obj.getAsJsonObject("data").getAsJsonObject("biz_data")
+            biz.get("id")?.asString
+                ?: biz.getAsJsonObject("chat_session").get("id").asString
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Non-streaming completion
+    // ------------------------------------------------------------------
+
+    data class ChatResult(val content: String, val reasoning: String)
+
+    suspend fun chat(
+        sessionId: String,
+        prompt: String,
+        modelType: String?,
+        thinkingEnabled: Boolean,
+        searchEnabled: Boolean,
+        parentMessageId: Int?
+    ): ChatResult = withContext(Dispatchers.IO) {
+        val headers = powHeaders("/api/v0/chat/completion")
+        val body = gson.toJson(mapOf(
+            "chat_session_id" to sessionId,
+            "parent_message_id" to parentMessageId,
+            "model_type" to modelType,
+            "prompt" to prompt,
+            "ref_file_ids" to emptyList<String>(),
+            "stream" to false,
+            "thinking_enabled" to thinkingEnabled,
+            "search_enabled" to searchEnabled,
+            "preempt" to false
+        ))
+        val request = Request.Builder()
+            .url("$BASE_URL/api/v0/chat/completion")
+            .post(RequestBody.create(body.toByteArray(), MediaType.Companion.parse("application/json")!!))
+            .headers(headers)
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IOException("chat failed: ${response.code}")
+            val text = response.body()!!.string()
+            parseEventsToResult(SseParser.parseSse(text))
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming completion
+    // ------------------------------------------------------------------
+
+    sealed class ChatEvent {
+        object Done : ChatEvent()
+        data class Text(val text: String) : ChatEvent()
+        data class Reasoning(val text: String) : ChatEvent()
+        data class Error(val message: String) : ChatEvent()
+    }
+
+    fun chatStream(
+        sessionId: String,
+        prompt: String,
+        modelType: String?,
+        thinkingEnabled: Boolean,
+        searchEnabled: Boolean,
+        parentMessageId: Int?
+    ): Flow<ChatEvent> = callbackFlow {
+        val headers = withContext(Dispatchers.IO) { powHeaders("/api/v0/chat/completion") }
+        val body = gson.toJson(mapOf(
+            "chat_session_id" to sessionId,
+            "parent_message_id" to parentMessageId,
+            "model_type" to modelType,
+            "prompt" to prompt,
+            "ref_file_ids" to emptyList<String>(),
+            "stream" to true,
+            "thinking_enabled" to thinkingEnabled,
+            "search_enabled" to searchEnabled,
+            "preempt" to false
+        ))
+        val request = Request.Builder()
+            .url("$BASE_URL/api/v0/chat/completion")
+            .post(RequestBody.create(body.toByteArray(), MediaType.Companion.parse("application/json")!!))
+            .headers(headers)
+            .build()
+        var fragType: String? = null
+        val listener = object : EventSourceListener() {
+            override fun onOpen(eventSource: EventSource, response: Response) {}
+            override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
+                try {
+                    val obj = JsonParser.parseString(data).asJsonObject
+                    val p = obj.get("p")?.asString ?: ""
+                    val o = obj.get("o")?.asString ?: ""
+                    val v = obj.get("v")
+
+                    if (v != null && v.isJsonObject && v.getAsJsonObject().has("response")) {
+                        val resp = v.getAsJsonObject().getAsJsonObject("response")
+                        val fragments = resp.getAsJsonArray("fragments")
+                        if (fragments.size > 0) {
+                            val frag = fragments.get(0).getAsJsonObject()
+                            val ft = frag.get("type").asString
+                            fragType = if (ft == "THINK") "thinking" else "content"
+                            val fc = frag.get("content").asString
+                            if (fc.isNotEmpty()) {
+                                offer(if (fragType == "thinking") ChatEvent.Reasoning(fc) else ChatEvent.Text(fc))
+                            }
+                        }
+                        return
+                    }
+                    if (p == "response/fragments/-1/content" && o == "APPEND") {
+                        offer(if (fragType == "thinking") ChatEvent.Reasoning(v.asString) else ChatEvent.Text(v.asString))
+                        return
+                    }
+                    if (p == "response/fragments" && o == "APPEND") {
+                        if (v.isJsonArray && v.getAsJsonArray().size > 0) {
+                            val frag = v.getAsJsonArray().get(0).getAsJsonObject()
+                            val nt = frag.get("type").asString
+                            if (nt == "RESPONSE") fragType = "content" else if (nt == "THINK") fragType = "thinking"
+                            val seed = frag.get("content").asString
+                            if (seed.isNotEmpty()) {
+                                offer(if (fragType == "thinking") ChatEvent.Reasoning(seed) else ChatEvent.Text(seed))
+                            }
+                        }
+                        return
+                    }
+                    if (p == "response/content" && o == "APPEND") {
+                        offer(ChatEvent.Text(v.asString))
+                        return
+                    }
+                    if (v != null && v.isJsonPrimitive && p.isEmpty() && o.isEmpty()) {
+                        offer(if (fragType == "thinking") ChatEvent.Reasoning(v.asString) else ChatEvent.Text(v.asString))
+                    }
+                } catch (e: Exception) {
+                    // ignore malformed frames
+                }
+            }
+            override fun onClosed(eventSource: EventSource) {
+                offer(ChatEvent.Done)
+                close()
+            }
+            override fun onFailure(eventSource: EventSource, t: Throwable, response: Response?) {
+                close(e)
+            }
+        }
+        val eventSource = EventSourceFactory(client).createEventSource(request, listener)
+        awaitClose { eventSource.cancel() }
+    }
+
+    // ------------------------------------------------------------------
+    // SSE -> result (shared with non-stream path)
+    // ------------------------------------------------------------------
+
+    private fun parseEventsToResult(events: List<SseEvent>): ChatResult {
+        val contentParts = mutableListOf<String>()
+        val thinkingParts = mutableListOf<String>()
+        var fragType: String? = null
+        for (sse in events) {
+            try {
+                val obj = JsonParser.parseString(sse.data).asJsonObject
+                val p = obj.get("p")?.asString ?: ""
+                val o = obj.get("o")?.asString ?: ""
+                val v = obj.get("v")
+
+                if (v != null && v.isJsonObject && v.getAsJsonObject().has("response")) {
+                    val resp = v.getAsJsonObject().getAsJsonObject("response")
+                    val fragments = resp.getAsJsonArray("fragments")
+                    if (fragments.size > 0) {
+                        val frag = fragments.get(0).getAsJsonObject()
+                        val ft = frag.get("type").asString
+                        fragType = if (ft == "THINK") "thinking" else "content"
+                        val fc = frag.get("content").asString
+                        if (fc.isNotEmpty()) {
+                            if (fragType == "thinking") thinkingParts.add(fc) else contentParts.add(fc)
+                        }
+                        continue
+                    }
+                }
+                if (p == "response/fragments/-1/content" && o == "APPEND") {
+                    if (fragType == "thinking") thinkingParts.add(v.asString) else contentParts.add(v.asString)
+                    continue
+                }
+                if (p == "response/fragments" && o == "APPEND") {
+                    if (v.isJsonArray && v.getAsJsonArray().size > 0) {
+                        val frag = v.getAsJsonArray().get(0).getAsJsonObject()
+                        val nt = frag.get("type").asString
+                        if (nt == "RESPONSE") fragType = "content" else if (nt == "THINK") fragType = "thinking"
+                        val seed = frag.get("content").asString
+                        if (seed.isNotEmpty()) {
+                            if (fragType == "thinking") thinkingParts.add(seed) else contentParts.add(seed)
+                        }
+                    }
+                    continue
+                }
+                if (p == "response/content" && o == "APPEND") {
+                    contentParts.add(v.asString)
+                    continue
+                }
+                if (v != null && v.isJsonPrimitive && p.isEmpty() && o.isEmpty()) {
+                    val token = v.asString
+                    if (token.isNotEmpty()) {
+                        if (fragType == "thinking") thinkingParts.add(token) else contentParts.add(token)
+                    }
+                }
+            } catch (e: Exception) {
+                // ignore malformed frames
+            }
+        }
+        return ChatResult(content = contentParts.joinToString(""), reasoning = thinkingParts.joinToString(""))
+    }
+}
