@@ -2,8 +2,8 @@ package com.deepseekweb2api.app.client
 
 import android.util.Base64
 import com.google.gson.Gson
-import org.bouncycastle.crypto.digests.SHA3Digest
 import java.nio.charset.Charsets
+import java.security.MessageDigest
 import kotlin.concurrent.thread
 
 /**
@@ -99,10 +99,7 @@ class PowSolver {
     }
 
     private fun sha3_256(input: ByteArray): ByteArray {
-        val digest = SHA3Digest(256)
-        digest.update(input, 0, input.size)
-        val out = ByteArray(32)
-        digest.doFinal(out, 0)
-        return out
+        val digest = MessageDigest.getInstance("SHA3-256")
+        return digest.digest(input)
     }
 }
