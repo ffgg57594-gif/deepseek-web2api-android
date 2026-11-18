@@ -29,7 +29,7 @@ class LocalApiTest {
 
     companion object {
         const val BASE_URL = "http://127.0.0.1:8080"
-        const val JSON = "application/json".toMediaType()
+        val JSON = "application/json".toMediaType()
     }
 
     private lateinit var context: Context
@@ -118,6 +118,6 @@ class LocalApiTest {
     fun invalidRequestReturnsError() {
         val response = post("/v1/chat/completions", "not json")
         // قد يكون 400 أو 500 حسب التنفيذ، ولكن يجب ألا يكون 200 ناجحًا مع محتوى خاطئ
-        assert(response.code != 200 || response.body?.string().contains("error") == true)
+        assert(response.code != 200 || response.body?.string()?.contains("error") == true)
     }
 }

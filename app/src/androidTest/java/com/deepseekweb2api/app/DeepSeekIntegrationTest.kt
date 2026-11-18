@@ -29,7 +29,7 @@ class DeepSeekIntegrationTest {
 
         Assume.assumeTrue(
             "deepseekToken و deepseekCookiesB64 غير مضبوطة — اختبار التكامل الحقيقي غير مُنفذ (NOT TESTED)",
-            token.isNotNullOrBlank() && cookies.isNotNullOrBlank()
+            token?.isNotEmpty() == true && cookies?.isNotEmpty() == true
         )
 
         // هذا الجزء يُنفذ فقط إذا كانت البيانات reales موجودة
