@@ -21,20 +21,28 @@ class AccountRepository {
     }
 
     fun update(id: String, block: Account.Builder.() -> Unit) {
-        val builder = Account.Builder(_accounts.value.firstOrNull { it.id == id })
+        val existing = _accounts.value.firstOrNull { it.id == id } ?: return
+        val builder = Account.Builder(existing)
         block(builder)
         val updated = builder.build()
-        _accounts.value = _accounts.value.map {
-            if (it.id == id) updated else it
+        _accounts.value = _accounts.value.map { acct ->
+            if (acct.id == id) updated else acct
         }
     }
 
     fun setState(id: String, state: String, error: String? = null) {
         _accounts.value = _accounts.value.map { acct ->
-            when {
-                it.id != id -> acct
-                state == "error" -> acct.copy(state = state, errorCount = acct.errorCount + 1, lastError = error, updatedAt = System.currentTimeMillis())
-                else -> acct.copy(state = state, lastError = null, updatedAt = System.currentTimeMillis())
+            if (acct.id != id) {
+                acct
+            } else if (state == "error") {
+                acct.copy(
+                    state = state,
+                    errorCount = acct.errorCount + 1,
+                    lastError = error,
+                    updatedAt = System.currentTimeMillis()
+                )
+            } else {
+                acct.copy(state = state, lastError = null, updatedAt = System.currentTimeMillis())
             }
         }
     }
@@ -47,6 +55,8 @@ class AccountRepository {
 
     fun nextIdleAccount(): Account? =
         _accounts.value.firstOrNull { it.state == "idle" }
+
+    fun firstAccount(): Account? = _accounts.value.firstOrNull()
 
     val stats: AccountStats
         get() {
@@ -66,19 +76,3 @@ data class AccountStats(
     val busy: Int,
     val error: Int
 )
-
-class Builder(private val base: Account?) {
-    private var id: String = base?.id ?: java.util.UUID.randomUUID().toString()
-    private var email: String? = base?.email
-    private var token: String = base?.token ?: ""
-    private var cookies: String? = base?.cookies
-    private var state: String = base?.state ?: "idle"
-
-    fun id(value: String) = apply { id = value }
-    fun email(value: String?) = apply { email = value }
-    fun token(value: String) = apply { token = value }
-    fun cookies(value: String?) = apply { cookies = value }
-    fun state(value: String) = apply { state = value }
-
-    fun build() = Account(id, email, token, cookies, state)
-}

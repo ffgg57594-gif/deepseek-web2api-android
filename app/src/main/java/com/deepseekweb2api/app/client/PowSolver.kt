@@ -4,7 +4,6 @@ import android.util.Base64
 import com.google.gson.Gson
 import kotlin.text.Charsets
 import java.security.MessageDigest
-import kotlin.concurrent.thread
 
 /**
  * DeepSeekHashV1 Proof-of-Work reimplementation.
@@ -68,24 +67,21 @@ class PowSolver {
                 )
             }
             nonce++
-            if (nonce % 50_000 == 0) thread { Thread.yield() }
+            if (nonce % 50_000L == 0L) { Thread.yield() }
         }
     }
 
     private fun coerceDifficulty(difficulty: Int): Int = difficulty.coerceIn(0, 254)
 
     private fun difficultyTarget(bits: Int): ByteArray {
-        val hash = ByteArray(32)
+        val target = ByteArray(32) { 0xFF.toByte() }
         val fullBytes = bits / 8
         val remBits = bits % 8
-        for (i in hash.indices) {
-            hash[i] = when {
-                i < fullBytes -> 0.toByte()
-                i == fullBytes -> (0xFF shl (8 - remBits)).toByte().inv()
-                else -> 0xFF.toByte()
-            }
+        for (i in 0 until fullBytes) target[i] = 0x00
+        if (fullBytes < 32 && remBits > 0) {
+            target[fullBytes] = ((1 shl (8 - remBits)) - 1).toByte()
         }
-        return hash
+        return target
     }
 
     private fun hashMeetsTarget(hash: ByteArray, target: ByteArray): Boolean {

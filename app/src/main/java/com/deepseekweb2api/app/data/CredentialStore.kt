@@ -1,6 +1,7 @@
 package com.deepseekweb2api.app.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 
@@ -11,10 +12,10 @@ import androidx.security.crypto.MasterKeys
  */
 object CredentialStore {
     private const val PREF_NAME = "deepseek_accounts"
-    private lateinit var prefs: EncryptedSharedPreferences
+    private var prefs: SharedPreferences? = null
 
     fun init(context: Context) {
-        if (::prefs.isInitialized) return
+        if (prefs != null) return
         val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
         prefs = EncryptedSharedPreferences.create(
             PREF_NAME,
@@ -25,23 +26,25 @@ object CredentialStore {
         )
     }
 
+    private fun p(): SharedPreferences? = prefs
+
     fun saveAccount(account: Account) {
-        prefs.edit()
-            .putString("token_${account.id}", account.token)
-            .putString("cookies_${account.id}", account.cookies ?: "")
-            .apply()
+        p()?.edit()
+            ?.putString("token_${account.id}", account.token)
+            ?.putString("cookies_${account.id}", account.cookies ?: "")
+            ?.apply()
     }
 
     fun getToken(accountId: String): String? =
-        prefs.getString("token_$accountId", null).takeIf { it.isNotEmpty() }
+        p()?.getString("token_$accountId", null)?.takeIf { it.isNotEmpty() }
 
     fun getCookies(accountId: String): String? =
-        prefs.getString("cookies_$accountId", null).takeIf { it.isNotEmpty() }
+        p()?.getString("cookies_$accountId", null)?.takeIf { it.isNotEmpty() }
 
     fun removeAccount(accountId: String) {
-        prefs.edit()
-            .remove("token_$accountId")
-            .remove("cookies_$accountId")
-            .apply()
+        p()?.edit()
+            ?.remove("token_$accountId")
+            ?.remove("cookies_$accountId")
+            ?.apply()
     }
 }

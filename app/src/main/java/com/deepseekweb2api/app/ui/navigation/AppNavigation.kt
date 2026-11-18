@@ -1,11 +1,11 @@
 package com.deepseekweb2api.app.ui.navigation
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -14,23 +14,29 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import com.deepseekweb2api.app.client.DeepSeekClient
 import com.deepseekweb2api.app.data.Account
 import com.deepseekweb2api.app.data.AccountRepository
 import com.deepseekweb2api.app.server.KtorServer
+import com.deepseekweb2api.app.ui.screens.AccountManagerScreen
 import com.deepseekweb2api.app.ui.screens.AddEditAccountScreen
 import com.deepseekweb2api.app.ui.screens.ApiConfigScreen
-import com.deepseekweb2api.app.ui.screens.AccountManagerScreen
 import com.deepseekweb2api.app.ui.screens.DashboardScreen
 import com.deepseekweb2api.app.ui.screens.LogsScreen
 import com.deepseekweb2api.app.ui.screens.ModelSelectionScreen
-import com.deepseekweb2api.app.ui.screens.SettingsScreen
 import com.deepseekweb2api.app.ui.screens.ServerControlScreen
+import com.deepseekweb2api.app.ui.screens.SettingsScreen
 import com.deepseekweb2api.app.ui.screens.StatisticsScreen
 import com.deepseekweb2api.app.ui.theme.DeepSeekTheme
+import kotlinx.coroutines.launch
 
 sealed class Screen {
     object Dashboard : Screen()
@@ -43,30 +49,33 @@ sealed class Screen {
     object Logs : Screen()
     object Settings : Screen()
 
-    val title: String = when (this) {
-        is Dashboard -> "لوحة المعلومات"
-        is Accounts -> "الحسابات"
-        is AddAccount -> "إضافة حساب"
-        is Models -> "النماذج"
-        is ApiConfig -> "إعدادات API"
-        is ServerControl -> "التحكم بالخادم"
-        is Statistics -> "الإحصائيات"
-        is Logs -> "السجلات"
-        is Settings -> "الإعدادات"
-    }
+    val title: String
+        get() = when (this) {
+            is Dashboard -> "لوحة المعلومات"
+            is Accounts -> "الحسابات"
+            is AddAccount -> "إضافة حساب"
+            is Models -> "النماذج"
+            is ApiConfig -> "إعدادات API"
+            is ServerControl -> "التحكم بالخادم"
+            is Statistics -> "الإحصائيات"
+            is Logs -> "السجلات"
+            is Settings -> "الإعدادات"
+        }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigation() {
+    val baseRepo = remember { AccountRepository() }
     var navStack by remember { mutableStateOf(listOf<Screen>(Screen.Dashboard)) }
-    val screen: Screen by remember { navStack.last() }
+    val screen = navStack.last()
 
-    val repo by remember { mutableStateOf(AccountRepository()) }
-    val accounts by repo.value.accounts.collectAsState(initialValue = emptyList<Account>())
-
+    val accounts by baseRepo.accounts.collectAsState()
     var server by remember { mutableStateOf<KtorServer?>(null) }
     var isRunning by remember { mutableStateOf(false) }
-    var deepSeekClient by remember { mutableStateOf<DeepSeekClient?>(null) }
+
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     fun push(s: Screen) { navStack = navStack + s }
     fun pop() { if (navStack.size > 1) navStack = navStack.dropLast(1) }
@@ -77,66 +86,76 @@ fun AppNavigation() {
             topBar = {
                 TopAppBar(
                     title = { Text(text = screen.title) },
-                    navigationIcon = if (navStack.size > 1) {
-                        IconButton(onClick = { pop() }) {
-                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    navigationIcon = {
+                        if (navStack.size > 1) {
+                            IconButton(onClick = { pop() }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "رجوع"
+                                )
+                            }
                         }
-                    } else null
+                    }
                 )
             }
         ) { padding ->
             Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                 when (screen) {
-                    Screen.Dashboard -> DashboardScreen(
+                    is Screen.Dashboard -> DashboardScreen(
                         onAccounts = { push(Screen.Accounts) },
                         onServer = { push(Screen.ServerControl) },
                         onModels = { push(Screen.Models) },
                         onLogs = { push(Screen.Logs) },
                         onSettings = { push(Screen.Settings) },
-                        stats = repo.value.stats
+                        stats = baseRepo.stats
                     )
-                    Screen.Accounts -> AccountManagerScreen(
+
+                    is Screen.Accounts -> AccountManagerScreen(
                         onBack = { pop() },
                         onAdd = { push(Screen.AddAccount) },
                         accounts = accounts,
                         onTest = { acct ->
-                            repo.value.setState(acct.id, "busy")
-                            try {
-                                val client = deepSeekClient.value ?: DeepSeekClient.create(
-                                    acct.token,
-                                    acct.cookies
-                                )
-                                deepSeekClient.value = client
-                                client.createSession()
-                                repo.value.setState(acct.id, "idle")
-                                Toast.makeText(
-                                    androidx.compose.ui.platform.LocalContext.current,
-                                    "الحساب سليم",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            } catch (e: Exception) {
-                                repo.value.setState(acct.id, "error", e.message)
+                            baseRepo.setState(acct.id, "busy")
+                            scope.launch {
+                                val ok = runCatching {
+                                    val client = DeepSeekClient.create(acct.token, acct.cookies)
+                                    client.createSession()
+                                }.isSuccess
+                                if (ok) {
+                                    baseRepo.markRecovered(acct.id)
+                                    Toast.makeText(context, "الحساب سليم", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    baseRepo.setState(acct.id, "error", "فشل الاتصال")
+                                    Toast.makeText(context, "فشل الاتصال", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         },
-                        onDelete = { acct -> repo.value.remove(acct.id) }
+                        onDelete = { acct -> baseRepo.remove(acct.id) }
                     )
-                    Screen.AddAccount -> AddEditAccountScreen(
+
+                    is Screen.AddAccount -> AddEditAccountScreen(
                         onBack = { pop() },
-                        repo = repo.value,
+                        repo = baseRepo,
                         onSaved = { pop() }
                     )
-                    Screen.Models -> ModelSelectionScreen(
+
+                    is Screen.Models -> ModelSelectionScreen(
                         onBack = { pop() },
                         onSelect = {}
                     )
-                    Screen.ApiConfig -> ApiConfigScreen(onBack = { pop() })
-                    Screen.ServerControl -> ServerControlScreen(
+
+                    is Screen.ApiConfig -> ApiConfigScreen(onBack = { pop() })
+
+                    is Screen.ServerControl -> ServerControlScreen(
                         onBack = { pop() },
                         server = server,
                         isRunning = isRunning,
                         onToggle = {
                             if (!isRunning) {
-                                server = KtorServer(8080, deepSeekClient.value)
+                                val client = accounts
+                                    .firstOrNull { it.token.isNotBlank() }
+                                    ?.let { DeepSeekClient.create(it.token, it.cookies) }
+                                server = KtorServer(8080, client)
                                 server?.start()
                                 isRunning = true
                             } else {
@@ -146,12 +165,15 @@ fun AppNavigation() {
                             }
                         }
                     )
-                    Screen.Statistics -> StatisticsScreen(
+
+                    is Screen.Statistics -> StatisticsScreen(
                         onBack = { pop() },
-                        stats = repo.value.stats
+                        stats = baseRepo.stats
                     )
-                    Screen.Logs -> LogsScreen(onBack = { pop() })
-                    Screen.Settings -> SettingsScreen(onBack = { pop() })
+
+                    is Screen.Logs -> LogsScreen(onBack = { pop() })
+
+                    is Screen.Settings -> SettingsScreen(onBack = { pop() })
                 }
             }
         }

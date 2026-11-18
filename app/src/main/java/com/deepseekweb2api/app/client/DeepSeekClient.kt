@@ -289,11 +289,9 @@ class DeepSeekClient private constructor(
                 close()
             }
 
-            override fun onFailure(eventSource: EventSource, t: Throwable, response: Response?) {
-                if (!isClosedForSend) {
-                    trySend(ChatEvent.Error(t.message ?: "stream failed"))
-                    close()
-                }
+            override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
+                trySend(ChatEvent.Error(t?.message ?: "stream failed"))
+                close()
             }
         }
 
