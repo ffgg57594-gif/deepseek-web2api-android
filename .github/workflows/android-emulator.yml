@@ -13,7 +13,7 @@ permissions:
 jobs:
   emulator-functional-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -53,7 +53,7 @@ jobs:
           ANDROID_SDK_ROOT: /opt/android-sdk
         run: |
           yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
-          /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
+          /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0" "system-images;android-35;google_apis;x86_64" "emulator"
 
       - name: Build debug APK
         env:
@@ -72,53 +72,79 @@ jobs:
           echo "All build attempts failed"
           exit 1
 
-      - name: Run instrumented tests on Android Emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -accel off
-          disable-animations: true
-          checkout: false
+      - name: Create Android Emulator (API 35)
+        env:
+          ANDROID_HOME: /opt/android-sdk
+          ANDROID_SDK_ROOT: /opt/android-sdk
+        run: |
+          echo "y" | /opt/android-sdk/cmdline-tools/latest/bin/avdmanager create avd \
+            -n test_avd \
+            -k "system-images;android-35;google_apis;x86_64" \
+            -g google_apis \
+            -d pixel_6
+
+      - name: Start Android Emulator
+        env:
+          ANDROID_HOME: /opt/android-sdk
+          ANDROID_SDK_ROOT: /opt/android-sdk
+        run: |
+          nohup /opt/android-sdk/emulator/emulator -avd test_avd \
+            -no-snapshot -no-window -gpu swiftshader_indirect -accel off \
+            -qemu -enable-kvm -m 2048 > emulator.log 2>&1 &
+          echo "Emulator started, waiting for boot..."
+          for i in $(seq 1 60); do
+            if /opt/android-sdk/platform-tools/adb wait-for-device shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+              echo "Emulator booted successfully"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Emulator failed to boot"
+          cat emulator.log
+          exit 1
+
+      - name: Install debug APK on emulator
+        env:
+          ANDROID_HOME: /opt/android-sdk
+          ANDROID_SDK_ROOT: /opt/android-sdk
+        run: |
+          /opt/android-sdk/platform-tools/adb wait-for-device
+          /opt/android-sdk/platform-tools/adb install -r -t app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Forward port 8080 for local API testing
+        env:
+          ANDROID_HOME: /opt/android-sdk
+          ANDROID_SDK_ROOT: /opt/android-sdk
+        run: |
+          /opt/android-sdk/platform-tools/adb reverse tcp:8080 tcp:8080
+
+      - name: Run instrumented tests
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
           DEEPSEEK_AUTH_TOKEN: ${{ secrets.DEEPSEEK_AUTH_TOKEN }}
           DEEPSEEK_COOKIE: ${{ secrets.DEEPSEEK_COOKIE }}
-        steps:
-          - name: Checkout code (inside emulator job)
-            uses: actions/checkout@v4
-
-          - name: Install debug APK on emulator
-            run: |
-              adb wait-for-device
-              adb install -r -t app/build/outputs/apk/debug/app-debug.apk
-
-          - name: Forward port 8080 for local API testing
-            run: |
-              adb reverse tcp:8080 tcp:8080
-
-          - name: Run instrumented tests
-            run: |
-              for attempt in 1 2 3; do
-                echo "=== Test attempt $attempt ==="
-                if gradle connectedAndroidTest --stacktrace --no-daemon; then
-                  echo "TESTS SUCCEEDED on attempt $attempt"
-                  exit 0
-                fi
-                echo "Test attempt $attempt failed; sleeping before retry..."
-                sleep $((attempt * 20))
-              done
-              echo "All test attempts failed"
-              exit 1
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== Test attempt $attempt ==="
+            if gradle connectedAndroidTest --stacktrace --no-daemon; then
+              echo "TESTS SUCCEEDED on attempt $attempt"
+              exit 0
+            fi
+            echo "Test attempt $attempt failed; sleeping before retry..."
+            sleep $((attempt * 20))
+          done
+          echo "All test attempts failed"
+          exit 1
 
       - name: Pull logcat on failure
         if: failure()
+        env:
+          ANDROID_HOME: /opt/android-sdk
+          ANDROID_SDK_ROOT: /opt/android-sdk
         run: |
-          adb logcat -d > logcat_failure.txt || true
-          echo "Logcat saved to logcat_failure.txt"
+          /opt/android-sdk/platform-tools/adb logcat -d > logcat_failure.txt 2>/dev/null || true
+          echo "Logcat saved"
 
       - name: Upload test reports and logcat
         if: always()
