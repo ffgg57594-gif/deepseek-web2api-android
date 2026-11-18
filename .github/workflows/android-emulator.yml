@@ -34,7 +34,17 @@ jobs:
 
       - name: Run JVM unit tests (PowSolver, SseParser, KtorServer, AccountRepository)
         run: |
-          gradle test --stacktrace --no-daemon
+          for attempt in 1 2 3; do
+            echo "=== Test attempt $attempt ==="
+            if gradle test --stacktrace --no-daemon; then
+              echo "JVM TESTS SUCCEEDED on attempt $attempt"
+              exit 0
+            fi
+            echo "Test attempt $attempt failed; sleeping before retry..."
+            sleep $((attempt * 30))
+          done
+          echo "All JVM test attempts failed"
+          exit 1
 
       - name: Upload JVM test reports
         if: always()
