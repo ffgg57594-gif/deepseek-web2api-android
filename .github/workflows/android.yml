@@ -17,20 +17,21 @@ jobs:
           distribution: 'zulu'
           java-version: 17
 
+      - name: Install Gradle 8.2
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-8.2/bin" >> $GITHUB_PATH
+
       - name: Debug wrapper files
         run: |
-          echo "=== gradlew ===" && ls -la gradlew && head -5 gradlew
-          echo "=== gradle/wrapper ===" && ls -la gradle/wrapper/
-          echo "=== gradle-wrapper.properties ===" && cat gradle/wrapper/gradle-wrapper.properties
+          echo "=== gradlew ===" && ls -la gradlew 2>/dev/null || echo "gradlew missing"
           echo "=== settings.gradle ===" && cat settings.gradle
           echo "=== build.gradle (root) ===" && cat build.gradle
           echo "=== app/build.gradle ===" && cat app/build.gradle
 
       - name: Ensure gradlew is executable
-        run: chmod +x gradlew
-
-      - name: Gradle version check (stacktrace)
-        run: ./gradlew --version --stacktrace
+        run: chmod +x gradlew 2>/dev/null || true
 
       - name: Create debug keystore
         run: keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=AndroidHarness"
@@ -59,11 +60,17 @@ jobs:
           yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
           /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
 
-      - name: Build release APK (with stacktrace)
+      - name: Gradle version check
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
-        run: ./gradlew assembleRelease --stacktrace --info
+        run: gradle --version
+
+      - name: Build release APK
+        env:
+          ANDROID_HOME: /opt/android-sdk
+          ANDROID_SDK_ROOT: /opt/android-sdk
+        run: gradle assembleRelease --stacktrace --info
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
