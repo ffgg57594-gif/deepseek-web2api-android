@@ -53,6 +53,12 @@ jobs:
           yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
           /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
 
+      - name: Regenerate Gradle wrapper
+        run: |
+          gradle wrapper --gradle-version 8.2
+          chmod +x gradlew
+          sh -n gradlew && echo "gradlew syntax OK"
+
       - name: Compile JVM unit tests
         env:
           ANDROID_HOME: /opt/android-sdk
