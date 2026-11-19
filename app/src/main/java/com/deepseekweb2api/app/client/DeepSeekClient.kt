@@ -203,13 +203,15 @@ class DeepSeekClient private constructor(
                 val text = response.body?.string() ?: throw IOException("empty pow challenge body")
                 val obj = JsonParser.parseString(text).asJsonObject
                 val biz = obj.getAsJsonObject("data").getAsJsonObject("biz_data")
+                // The challenge field is now an object with algorithm, challenge, salt, etc.
+                val challengeObj = biz.getAsJsonObject("challenge")
                 PowSolver.Challenge(
-                    challenge = biz.get("challenge").asString,
-                    salt = biz.get("salt").asString,
-                    expireAt = biz.get("expire_at").asLong,
-                    difficulty = biz.get("difficulty").asInt,
-                    signature = biz.get("signature").asString,
-                    targetPath = biz.get("target_path").asString
+                    challenge = challengeObj.get("challenge").asString,
+                    salt = challengeObj.get("salt").asString,
+                    expireAt = challengeObj.get("expire_at").asLong,
+                    difficulty = challengeObj.get("difficulty").asInt,
+                    signature = challengeObj.get("signature").asString,
+                    targetPath = challengeObj.get("target_path").asString
                 )
             }
         }
