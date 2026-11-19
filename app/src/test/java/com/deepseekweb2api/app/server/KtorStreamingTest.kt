@@ -13,7 +13,7 @@ class KtorStreamingTest {
 
     @Test
     fun sseDeltaFormatIsOpenAICompatible() {
-        val gson = com.google.gson.Gson()
+        val gson = com.google.gson.GsonBuilder().serializeNulls().create()
         val payload = mapOf(
             "id" to "chatcmpl-local",
             "object" to "chat.completion.chunk",
