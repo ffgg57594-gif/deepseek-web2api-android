@@ -77,7 +77,7 @@ fun AddEditAccountScreen(
 
     fun checkNonAscii(text: String, fieldLabel: String): String? {
         for (i in text.indices) {
-            if (text[i] > 0x7F) {
+            if (text[i].code > 0x7F) {
                 return "${ctx.getString(R.string.warning_non_ascii, i + 1, text[i].toString())}"
             }
         }
