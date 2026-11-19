@@ -40,13 +40,22 @@ class DeepSeekClient private constructor(
     private val gson: Gson,
     private val token: String,
     private val cookies: String?,
-    private val powSolver: PowSolver
+    private val powSolver: PowSolver,
+    private val userAgent: String = DEFAULT_USER_AGENT,
+    private val secChUa: String = DEFAULT_SEC_CH_UA
 ) {
     companion object {
         const val BASE_URL = "https://chat.deepseek.com"
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
+        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        const val DEFAULT_SEC_CH_UA = "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\""
 
-        fun create(token: String, cookies: String? = null): DeepSeekClient =
+        fun create(
+            token: String,
+            cookies: String? = null,
+            userAgent: String = DEFAULT_USER_AGENT,
+            secChUa: String = DEFAULT_SEC_CH_UA
+        ): DeepSeekClient =
             DeepSeekClient(
                 OkHttpClient.Builder()
                     .connectTimeout(30, TimeUnit.SECONDS)
@@ -56,12 +65,92 @@ class DeepSeekClient private constructor(
                 Gson(),
                 token,
                 cookies,
-                PowSolver()
+                PowSolver(),
+                userAgent,
+                secChUa
             )
     }
 
     private val authHeader: String
-        get() = if (token.startsWith("Bearer ", ignoreCase = true)) token else "Bearer $token"
+        get() = if (token.startsWith("[redacted]", ignoreCase = true)) "[REDACTED]" else "Bearer $token"
+
+    /** Result of a manual connectivity test against create_pow_challenge. */
+    data class ConnectionTestResult(
+        val success: Boolean,
+        val httpCode: Int? = null,
+        val httpCodeMeaning: String? = null,
+        val exceptionName: String? = null,
+        val exceptionMessage: String? = null,
+        val isHtmlResponse: Boolean = false,
+        val bodyPreview: String? = null,
+        val bodyFull: String? = null,
+        val contentType: String? = null
+    )
+
+    private fun meaningOf(code: Int): String = when (code) {
+        200 -> "نجاح - تم قبول الطلب"
+        201 -> "تم الإنشاء بنجاح"
+        202 -> "تم قبول الطلب للمعالجة"
+        400 -> "طلب خاطئ - تحقق من البيانات المرسلة"
+        401 -> "غير مصرح به - التوكن غير صالح أو منتهي الصلاحية"
+        403 -> "محظور - لا تملك حق الوصول لهذا المورد"
+        429 -> "كثير من الطلبات - تم تقييد المعدل (Rate Limit)"
+        500 -> "خطأ في الخادم الداخلي"
+        502 -> "بوابة خاطئة - الخادم غير متاح"
+        503 -> "الخدمة غير متاحة مؤقتاً"
+        else -> if (code in 200..299) "نجاح (كود $code)" else if (code in 400..499) "خطأ من جانب العميل (كود $code)" else if (code in 500..599) "خطأ من جانب الخادم (كود $code)" else "كود استجابة غير معروف (كود $code)"
+    }
+
+    private fun redact(text: String): String {
+        var result = text
+        if (token.isNotBlank() && token.length > 5) {
+            result = result.replace(token, "[مخفي]")
+        }
+        cookies?.let { c ->
+            if (c.isNotBlank() && c.length > 5) {
+                result = result.replace(c, "[مخفي]")
+            }
+        }
+        result = result.replace(Regex("Authorization\s*:\s*\S+"), "Authorization: [مخفي]")
+        result = result.replace(Regex("Cookie\s*:\s*\S+"), "Cookie: [مخفي]")
+        return result
+    }
+
+    suspend fun testConnection(): ConnectionTestResult {
+        return withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("$BASE_URL/api/v0/chat/create_pow_challenge")
+                    .post(jsonBody(mapOf("target_path" to "/api/v0/chat/completion")))
+                    .headers(baseHeaders("/api/v0/chat/completion").build())
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val code = response.code
+                    val body = response.body?.string() ?: ""
+                    val contentType = response.header("Content-Type") ?: ""
+                    val isHtml = contentType.contains("text/html", ignoreCase = true) || body.trimStart().startsWith("<")
+                    val redactedBody = redact(body)
+
+                    ConnectionTestResult(
+                        success = response.isSuccessful,
+                        httpCode = code,
+                        httpCodeMeaning = meaningOf(code),
+                        isHtmlResponse = isHtml,
+                        bodyPreview = redactedBody.take(200),
+                        bodyFull = redactedBody.take(1000),
+                        contentType = contentType
+                    )
+                }
+            } catch (e: Exception) {
+                ConnectionTestResult(
+                    success = false,
+                    exceptionName = e.javaClass.simpleName,
+                    exceptionMessage = e.message ?: e.toString()
+                )
+            }
+        }
+    }
 
     private fun jsonBody(map: Map<String, Any?>): okhttp3.RequestBody =
         gson.toJson(map).toRequestBody(JSON_MEDIA_TYPE)
@@ -71,7 +160,7 @@ class DeepSeekClient private constructor(
         val b = Headers.Builder()
             .add("Authorization", authHeader)
         cookies?.let { b.add("Cookie", it) }
-        b.add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+        b.add("User-Agent", userAgent)
             .add("Accept", "*/*")
             .add("Accept-Encoding", "gzip, deflate, br, zstd")
             .add("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
@@ -84,7 +173,7 @@ class DeepSeekClient private constructor(
             .add("X-Client-Timezone-Offset", "28800")
             .add("x-client-bundle-id", "com.deepseek.chat")
             .add("Priority", "u=1, i")
-            .add("Sec-Ch-Ua", "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"")
+            .add("Sec-Ch-Ua", secChUa)
             .add("Sec-Ch-Ua-Mobile", "?0")
             .add("Sec-Ch-Ua-Platform", "\"Windows\"")
             .add("Sec-Fetch-Dest", "empty")

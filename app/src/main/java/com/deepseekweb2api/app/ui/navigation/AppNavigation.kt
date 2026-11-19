@@ -73,6 +73,8 @@ fun AppNavigation() {
     val accounts by baseRepo.accounts.collectAsState()
     var server by remember { mutableStateOf<KtorServer?>(null) }
     var isRunning by remember { mutableStateOf(false) }
+    var userAgent by remember { mutableStateOf(DeepSeekClient.DEFAULT_USER_AGENT) }
+    var secChUa by remember { mutableStateOf(DeepSeekClient.DEFAULT_SEC_CH_UA) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -117,16 +119,16 @@ fun AppNavigation() {
                         onTest = { acct ->
                             baseRepo.setState(acct.id, "busy")
                             scope.launch {
-                                val ok = runCatching {
-                                    val client = DeepSeekClient.create(acct.token, acct.cookies)
-                                    client.createSession()
-                                }.isSuccess
-                                if (ok) {
+                                val result = runCatching {
+                                    DeepSeekClient.create(acct.token, acct.cookies, userAgent, secChUa).testConnection()
+                                }.getOrNull()
+                                if (result != null && result.success) {
                                     baseRepo.markRecovered(acct.id)
-                                    Toast.makeText(context, "الحساب سليم", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "تم الاتصال بنجاح (${result.httpCode})", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    baseRepo.setState(acct.id, "error", "فشل الاتصال")
-                                    Toast.makeText(context, "فشل الاتصال", Toast.LENGTH_SHORT).show()
+                                    val msg = result?.exceptionMessage ?: result?.httpCodeMeaning ?: "فشل الاتصال"
+                                    baseRepo.setState(acct.id, "error", msg)
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 }
                             }
                         },
@@ -136,7 +138,9 @@ fun AppNavigation() {
                     is Screen.AddAccount -> AddEditAccountScreen(
                         onBack = { pop() },
                         repo = baseRepo,
-                        onSaved = { pop() }
+                        onSaved = { pop() },
+                        userAgent = userAgent,
+                        secChUa = secChUa
                     )
 
                     is Screen.Models -> ModelSelectionScreen(
@@ -173,7 +177,13 @@ fun AppNavigation() {
 
                     is Screen.Logs -> LogsScreen(onBack = { pop() })
 
-                    is Screen.Settings -> SettingsScreen(onBack = { pop() })
+                    is Screen.Settings -> SettingsScreen(
+                        onBack = { pop() },
+                        userAgent = userAgent,
+                        secChUa = secChUa,
+                        onUserAgentChange = { userAgent = it },
+                        onSecChUaChange = { secChUa = it }
+                    )
                 }
             }
         }
