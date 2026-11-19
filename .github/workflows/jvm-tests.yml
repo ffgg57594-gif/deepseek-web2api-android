@@ -15,6 +15,7 @@ jobs:
     name: JVM Unit Tests (no emulator)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    environment: "deepseek cookies"
 
     steps:
       - name: Checkout code
@@ -73,7 +74,7 @@ jobs:
           deepseek_token: ${{ secrets.deepseek_token }}
           deepseek_cookies: ${{ secrets.deepseek_cookies }}
         run: |
-          echo "Secret availability check:"
+          echo "Secret availability check (from environment 'deepseek cookies'):"
           echo "deepseek_token available: $([ -n \"\$deepseek_token\" ] && echo 'YES' || echo 'NO')"
           echo "deepseek_token length: ${#deepseek_token}"
           echo "deepseek_cookies available: $([ -n \"\$deepseek_cookies\" ] && echo 'YES' || echo 'NO')"
