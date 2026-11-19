@@ -111,8 +111,8 @@ class DeepSeekClient private constructor(
                 result = result.replace(c, "[مخفي]")
             }
         }
-        result = result.replace(Regex("Authorization\s*:\s*\S+"), "Authorization: [مخفي]")
-        result = result.replace(Regex("Cookie\s*:\s*\S+"), "Cookie: [مخفي]")
+        result = result.replace(Regex("""Authorization\s*:\s*\S+"""), "Authorization: [مخفي]")
+        result = result.replace(Regex("""Cookie\s*:\s*\S+"""), "Cookie: [مخفي]")
         return result
     }
 

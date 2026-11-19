@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.deepseekweb2api.app.R
 import com.deepseekweb2api.app.client.DeepSeekClient
 import com.deepseekweb2api.app.data.Account
 import com.deepseekweb2api.app.data.AccountRepository
@@ -56,7 +57,7 @@ fun AddEditAccountScreen(
         t = t.replace("\r", "").replace("\n", "")
         // Remove "Bearer " prefix if present (case-insensitive)
         if (t.startsWith("Bearer ", ignoreCase = true)) {
-            t = t.removePrefix("Bearer ").removePrefix("bearer ").trim()
+            t = t.removePrefix("Bearer ").trim()
         }
         return t
     }
@@ -77,7 +78,7 @@ fun AddEditAccountScreen(
     fun checkNonAscii(text: String, fieldLabel: String): String? {
         for (i in text.indices) {
             if (text[i] > 0x7F) {
-                return "${ctx.getString(R.string.warning_non_ascii, i + 1, text[i])}"
+                return "${ctx.getString(R.string.warning_non_ascii, i + 1, text[i].toString())}"
             }
         }
         return null
