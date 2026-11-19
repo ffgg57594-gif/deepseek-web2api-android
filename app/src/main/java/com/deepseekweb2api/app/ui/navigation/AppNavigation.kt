@@ -21,11 +21,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
 import android.widget.Toast
 import com.deepseekweb2api.app.client.DeepSeekClient
 import com.deepseekweb2api.app.data.Account
 import com.deepseekweb2api.app.data.AccountRepository
-import com.deepseekweb2api.app.server.KtorServer
+import com.deepseekweb2api.app.server.LocalApiService
 import com.deepseekweb2api.app.ui.screens.AccountManagerScreen
 import com.deepseekweb2api.app.ui.screens.AddEditAccountScreen
 import com.deepseekweb2api.app.ui.screens.ApiConfigScreen
@@ -38,31 +39,6 @@ import com.deepseekweb2api.app.ui.screens.StatisticsScreen
 import com.deepseekweb2api.app.ui.theme.DeepSeekTheme
 import kotlinx.coroutines.launch
 
-sealed class Screen {
-    object Dashboard : Screen()
-    object Accounts : Screen()
-    object AddAccount : Screen()
-    object Models : Screen()
-    object ApiConfig : Screen()
-    object ServerControl : Screen()
-    object Statistics : Screen()
-    object Logs : Screen()
-    object Settings : Screen()
-
-    val title: String
-        get() = when (this) {
-            is Dashboard -> "لوحة المعلومات"
-            is Accounts -> "الحسابات"
-            is AddAccount -> "إضافة حساب"
-            is Models -> "النماذج"
-            is ApiConfig -> "إعدادات API"
-            is ServerControl -> "التحكم بالخادم"
-            is Statistics -> "الإحصائيات"
-            is Logs -> "السجلات"
-            is Settings -> "الإعدادات"
-        }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigation() {
@@ -71,7 +47,6 @@ fun AppNavigation() {
     val screen = navStack.last()
 
     val accounts by baseRepo.accounts.collectAsState()
-    var server by remember { mutableStateOf<KtorServer?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var userAgent by remember { mutableStateOf(DeepSeekClient.DEFAULT_USER_AGENT) }
     var secChUa by remember { mutableStateOf(DeepSeekClient.DEFAULT_SEC_CH_UA) }
@@ -81,6 +56,29 @@ fun AppNavigation() {
 
     fun push(s: Screen) { navStack = navStack + s }
     fun pop() { if (navStack.size > 1) navStack = navStack.dropLast(1) }
+
+    // Initialize service with accounts
+    val initService = remember {
+        LocalApiService.accounts = baseRepo
+    }
+
+    // Start/stop service via LocalApiService
+    fun startServer() {
+        context.startForegroundService(Intent(context, LocalApiService::class.java).apply {
+            action = LocalApiService.ACTION_START_SERVER
+        })
+    }
+
+    fun stopServer() {
+        context.startForegroundService(Intent(context, LocalApiService::class.java).apply {
+            action = LocalApiService.ACTION_STOP_SERVER
+        })
+    }
+
+    // Sync isRunning state with service
+    fun checkServerState() {
+        isRunning = LocalApiService.isServerActive
+    }
 
     DeepSeekTheme {
         Scaffold(
@@ -152,21 +150,15 @@ fun AppNavigation() {
 
                     is Screen.ServerControl -> ServerControlScreen(
                         onBack = { pop() },
-                        server = server,
                         isRunning = isRunning,
                         onToggle = {
                             if (!isRunning) {
-                                val client = accounts
-                                    .firstOrNull { it.token.isNotBlank() }
-                                    ?.let { DeepSeekClient.create(it.token, it.cookies) }
-                                server = KtorServer(8080, client)
-                                server?.start()
-                                isRunning = true
+                                startServer()
                             } else {
-                                server?.stop()
-                                server = null
-                                isRunning = false
+                                stopServer()
                             }
+                            // Refresh state after toggle
+                            checkServerState()
                         }
                     )
 

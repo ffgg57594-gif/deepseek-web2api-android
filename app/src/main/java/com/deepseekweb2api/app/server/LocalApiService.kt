@@ -16,12 +16,8 @@ import com.deepseekweb2api.app.data.AccountRepository
 import com.deepseekweb2api.app.data.CredentialStore
 
 /**
- * Foreground service that keeps the embedded Ktor API server alive while the
- * app is backgrounded. Subject to Android battery restrictions.
- *
- * The service builds a real [DeepSeekClient] from the first available
- * credential-bearing account in [AccountRepository] so that
- * /v1/chat/completions can actually forward to DeepSeek Web.
+ * Foreground service that owns and manages the embedded Ktor API server.
+ * The service is the single source of truth for server lifecycle.
  */
 class LocalApiService : Service() {
 
@@ -34,6 +30,7 @@ class LocalApiService : Service() {
     companion object {
         const val ACTION_START_SERVER = "com.deepseekweb2api.app.action.START_SERVER"
         const val ACTION_STOP_SERVER = "com.deepseekweb2api.app.action.STOP_SERVER"
+        const val ACTION_UPDATE_NOTIFICATION = "com.deepseekweb2api.app.action.UPDATE_NOTIFICATION"
         const val PORT = 8080
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "deepseek_api_channel"
@@ -56,6 +53,7 @@ class LocalApiService : Service() {
         when (intent?.action) {
             ACTION_START_SERVER -> startServerLocked()
             ACTION_STOP_SERVER -> stopServerLocked()
+            ACTION_UPDATE_NOTIFICATION -> updateNotification()
             else -> {
                 if (!isRunningFlag) {
                     startServerLocked()
@@ -70,21 +68,29 @@ class LocalApiService : Service() {
             return // Prevent duplicate servers
         }
 
-        val notification = buildNotification(
-            title = "DeepSeek Web2API",
-            text = "الخادم يعمل على 127.0.0.1:$PORT",
-            status = "Running"
-        )
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
         val client = resolveClient()
-        server = KtorServer(PORT, client)
-        server?.start()
-        isRunningFlag = true
+        if (client == null) {
+            // No valid credentials - cannot start server
+            stopSelf()
+            return
+        }
+
         isServerActive = true
+        val clientInstance = client
+        server = KtorServer(PORT, clientInstance)
+
+        // Start Ktor server first to catch any startup failures
+        server?.start()
+
+        // Check if server actually started
+        if (server?.server == null) {
+            isServerActive = false
+            stopSelf()
+            return
+        }
+
+        isRunningFlag = true
+        updateNotification()
     }
 
     private fun stopServerLocked() {
@@ -94,6 +100,26 @@ class LocalApiService : Service() {
         isServerActive = false
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun updateNotification() {
+        val status = if (isRunningFlag) "Running" else "Stopped"
+        val text = if (isRunningFlag) "الخادم يعمل على 127.0.0.1:$PORT" else "الخادم متوقف"
+        val notification = buildNotification(
+            title = "DeepSeek Web2API",
+            text = text,
+            status = status
+        )
+        if (isRunningFlag) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } else {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(NOTIFICATION_ID)
+        }
     }
 
     private fun resolveClient(): DeepSeekClient? {

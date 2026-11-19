@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ServerControlScreen(
     onBack: () -> Unit,
-    server: Any?,
     isRunning: Boolean,
     onToggle: () -> Unit
 ) {
