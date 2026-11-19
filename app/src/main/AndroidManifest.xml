@@ -32,7 +32,7 @@
             android:stopWithTask="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="local_api_server" />
+                android:value="Local API server for OpenAI-compatible chat completions proxy" />
         </service>
     </application>
 </manifest>

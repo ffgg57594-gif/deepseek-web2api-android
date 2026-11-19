@@ -70,18 +70,15 @@ jobs:
         env:
           ANDROID_HOME: /opt/android-sdk
           ANDROID_SDK_ROOT: /opt/android-sdk
+          deepseek_token: ${{ secrets.deepseek_token }}
+          deepseek_cookies: ${{ secrets.deepseek_cookies }}
         run: |
-          for attempt in 1 2 3; do
-            echo "=== Test attempt $attempt ==="
-            if gradle testDebugUnitTest --stacktrace --info --continue --no-daemon; then
-              echo "JVM TESTS SUCCEEDED on attempt $attempt"
-              exit 0
-            fi
-            echo "Test attempt $attempt failed; sleeping before retry..."
-            sleep $((attempt * 30))
-          done
-          echo "All JVM test attempts failed"
-          exit 1
+          echo "Secret availability check:"
+          echo "deepseek_token available: $([ -n \"\$deepseek_token\" ] && echo 'YES' || echo 'NO')"
+          echo "deepseek_token length: ${#deepseek_token}"
+          echo "deepseek_cookies available: $([ -n \"\$deepseek_cookies\" ] && echo 'YES' || echo 'NO')"
+          echo "deepseek_cookies length: ${#deepseek_cookies}"
+          gradle testDebugUnitTest --stacktrace --info --continue --no-daemon
 
       - name: Upload JVM test reports
         if: always()
