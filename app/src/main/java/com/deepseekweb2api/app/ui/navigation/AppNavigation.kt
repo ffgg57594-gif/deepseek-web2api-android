@@ -40,33 +40,28 @@ import com.deepseekweb2api.app.ui.theme.DeepSeekTheme
 import kotlinx.coroutines.launch
 
 sealed class Screen {
-    object Dashboard : Screen() {
-        val title = "لوحة المعلومات"
-    }
-    object Accounts : Screen() {
-        val title = "الحسابات"
-    }
-    object AddAccount : Screen() {
-        val title = "إضافة حساب"
-    }
-    object Models : Screen() {
-        val title = "النماذج"
-    }
-    object ApiConfig : Screen() {
-        val title = "إعدادات API"
-    }
-    object ServerControl : Screen() {
-        val title = "التحكم بالخادم"
-    }
-    object Statistics : Screen() {
-        val title = "الإحصائيات"
-    }
-    object Logs : Screen() {
-        val title = "السجلات"
-    }
-    object Settings : Screen() {
-        val title = "الإعدادات"
-    }
+    object Dashboard : Screen()
+    object Accounts : Screen()
+    object AddAccount : Screen()
+    object Models : Screen()
+    object ApiConfig : Screen()
+    object ServerControl : Screen()
+    object Statistics : Screen()
+    object Logs : Screen()
+    object Settings : Screen()
+
+    val title: String
+        get() = when (this) {
+            is Dashboard -> "لوحة المعلومات"
+            is Accounts -> "الحسابات"
+            is AddAccount -> "إضافة حساب"
+            is Models -> "النماذج"
+            is ApiConfig -> "إعدادات API"
+            is ServerControl -> "التحكم بالخادم"
+            is Statistics -> "الإحصائيات"
+            is Logs -> "السجلات"
+            is Settings -> "الإعدادات"
+        }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +69,7 @@ sealed class Screen {
 fun AppNavigation() {
     val baseRepo = remember { AccountRepository() }
     var navStack by remember { mutableStateOf(listOf<Screen>(Screen.Dashboard)) }
-    val screen = navStack.last()
+    val screen: Screen = navStack.last()
 
     val accounts by baseRepo.accounts.collectAsState()
     var isRunning by remember { mutableStateOf(false) }
