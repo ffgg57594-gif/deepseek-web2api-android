@@ -40,7 +40,7 @@
 
     <!-- Input validation -->
     <string name="input_cleaned">تم تنظيف المدخلات</string>
-    <string name="warning_non_ascii">يحتوي الحقل على حرف غير إنجليزي (غير ASCII) في الموضع %d: '%s'. قد يسبب هذا فشل المصادقة.</string>
+    <string name="warning_non_ascii">يحتوي الحقل على حرف غير إنجليزي (غير أسكي) في الموضع %d: '%s'. قد يسبب هذا فشل المصادقة.</string>
     <string name="token_bearer_removed">تم إزالة بادئة &quot;Bearer &quot; من التوكن.</string>
     <string name="token_json_extracted">تم استخراج قيمة الحقل &quot;value&quot; من التوكن JSON.</string>
     <string name="field_token">التفويض</string>
