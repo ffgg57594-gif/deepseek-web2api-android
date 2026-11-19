@@ -41,8 +41,8 @@
     <!-- Input validation -->
     <string name="input_cleaned">تم تنظيف المدخلات</string>
     <string name="warning_non_ascii">يحتوي الحقل على حرف غير إنجليزي (غير ASCII) في الموضع %d: '%s'. قد يسبب هذا فشل المصادقة.</string>
-    <string name="token_bearer_removed">تم إزالة بادئة "Bearer " من التوكن.</string>
-    <string name="token_json_extracted">تم استخراج قيمة الحقل "value" من التوكن JSON.</string>
+    <string name="token_bearer_removed">تم إزالة بادئة &quot;Bearer &quot; من التوكن.</string>
+    <string name="token_json_extracted">تم استخراج قيمة الحقل &quot;value&quot; من التوكن JSON.</string>
     <string name="field_token">التفويض</string>
     <string name="field_cookies">الكوكيز</string>
 
@@ -50,6 +50,6 @@
     <string name="settings_user_agent">وكيل المستخدم (User-Agent)</string>
     <string name="settings_user_agent_summary">قيمة تُرسل مع كل طلب للخادم. يمكن لصق وكيل المتصفح الذي أخذت منه الكوكيز.</string>
     <string name="settings_sec_ch_ua">Sec-Ch-Ua</string>
-    <string name="settings_sec_ch_ua_summary">مstead من valeur المتصفح. يُنصح بنسخها بالضبط من تاب Network في المتصفح.</string>
+    <string name="settings_sec_ch_ua_summary">بدلاً من قيمة المتصفح. يُنصح بنسخها بالضبط من تاب Network في المتصفح.</string>
     <string name="settings_network_hint">نصيحة: انسخ الـ Cookie header كاملاً من تاب Network (ليس document.cookie)، واستخدم نفس المتصفح والشبكة.</string>
 </resources>
