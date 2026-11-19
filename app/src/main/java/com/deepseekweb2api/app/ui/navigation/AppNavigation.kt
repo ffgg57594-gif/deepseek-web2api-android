@@ -110,7 +110,17 @@ fun AppNavigation() {
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 TopAppBar(
-                    title = { Text(text = screen.title) },
+                    title = { Text(text = when(screen) {
+                        Screen.Dashboard -> "لوحة المعلومات"
+                        Screen.Accounts -> "الحسابات"
+                        Screen.AddAccount -> "إضافة حساب"
+                        Screen.Models -> "النماذج"
+                        Screen.ApiConfig -> "إعدادات API"
+                        Screen.ServerControl -> "التحكم بالخادم"
+                        Screen.Statistics -> "الإحصائيات"
+                        Screen.Logs -> "السجلات"
+                        Screen.Settings -> "الإعدادات"
+                    }) },
                     navigationIcon = {
                         if (navStack.size > 1) {
                             IconButton(onClick = { pop() }) {
