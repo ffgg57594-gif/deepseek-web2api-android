@@ -148,7 +148,6 @@ class KtorServer(
                         parentMessageId = null
                     )
                     val responseComplete = System.currentTimeMillis()
-                    val powEnd = requestStart
                     println("NONSTREAM_TIMING: request_start=$requestStart pow_end=$powEnd response_complete=$responseComplete total_ms=${responseComplete - requestStart}")
                     val message = mutableMapOf<String, Any?>(
                         "role" to "assistant",
