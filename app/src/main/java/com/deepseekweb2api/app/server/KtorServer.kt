@@ -87,14 +87,21 @@ class KtorServer(
                 val thinkingEnabled = body["thinking_enabled"] as? Boolean ?: false
                 val searchEnabled = body["search_enabled"] as? Boolean ?: false
 
+                val requestStart = System.currentTimeMillis()
                 val sessionId = client.createSession()
                 val prompt = messages.joinToString("\n") { msg ->
                     "${msg["role"]}: ${msg["content"]}"
                 }
 
                 if (stream) {
+                    call.response.headers.append("Cache-Control", "no-cache")
+                    call.response.headers.append("Connection", "keep-alive")
+                    call.response.headers.append("X-Accel-Buffering", "no")
                     call.response.status(HttpStatusCode.OK)
                     call.respondTextWriter(ContentType.Text.EventStream) {
+                        val streamStart = System.currentTimeMillis()
+                        var firstChunkTime: Long? = null
+                        var chunkCount = 0
                         client.chatStream(
                             sessionId = sessionId,
                             prompt = prompt,
@@ -105,25 +112,33 @@ class KtorServer(
                         ).collect { event ->
                             when (event) {
                                 is DeepSeekClient.ChatEvent.Text -> {
-                                    write(sseDelta(event.text))
+                                    if (firstChunkTime == null) firstChunkTime = System.currentTimeMillis()
+                                    chunkCount++
+                                    write(sseDelta(event.text, model))
                                     flush()
                                 }
                                 is DeepSeekClient.ChatEvent.Reasoning -> {
-                                    write(sseDelta("[DEEPSEEK_REASONING]${event.text}"))
+                                    if (firstChunkTime == null) firstChunkTime = System.currentTimeMillis()
+                                    chunkCount++
+                                    write(sseDelta("[DEEPSEEK_REASONING]${event.text}", model))
                                     flush()
                                 }
                                 DeepSeekClient.ChatEvent.Done -> {
                                     write("data: [DONE]\n\n")
                                     flush()
+                                    val totalMs = System.currentTimeMillis() - requestStart
+                                    val ttftMs = firstChunkTime?.let { it - requestStart } ?: -1
+                                    println("STREAM_TIMING: request_start=$requestStart ttft_ms=$ttftMs chunks=$chunkCount total_ms=$totalMs")
                                 }
                                 is DeepSeekClient.ChatEvent.Error -> {
-                                    write("data: ${gson.toJson(mapOf("error" to event.message))}\n\n")
+                                    write("data: ${gson.toJson(mapOf("error" to mapOf("message" to event.message, "type" to "server_error")))}\n\n")
                                     flush()
                                 }
                             }
                         }
                     }
                 } else {
+                    val powEnd = System.currentTimeMillis()
                     val result = client.chat(
                         sessionId = sessionId,
                         prompt = prompt,
@@ -132,6 +147,9 @@ class KtorServer(
                         searchEnabled = searchEnabled,
                         parentMessageId = null
                     )
+                    val responseComplete = System.currentTimeMillis()
+                    val powEnd = requestStart
+                    println("NONSTREAM_TIMING: request_start=$requestStart pow_end=$powEnd response_complete=$responseComplete total_ms=${responseComplete - requestStart}")
                     val message = mutableMapOf<String, Any?>(
                         "role" to "assistant",
                         "content" to result.content
@@ -159,10 +177,14 @@ class KtorServer(
         }
     }
 
-    private fun sseDelta(content: String): String {
+    private fun sseDelta(content: String, model: String? = null): String {
         val payload = mapOf(
+            "id" to "chatcmpl-local",
+            "object" to "chat.completion.chunk",
+            "created" to System.currentTimeMillis() / 1000,
+            "model" to (model ?: "deepseek-chat"),
             "choices" to listOf(
-                mapOf("delta" to mapOf("content" to content))
+                mapOf("index" to 0, "delta" to mapOf("content" to content), "finish_reason" to null)
             )
         )
         return "data: ${gson.toJson(payload)}\n\n"

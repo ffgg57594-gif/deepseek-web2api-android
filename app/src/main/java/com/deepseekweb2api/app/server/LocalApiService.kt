@@ -10,13 +10,14 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.deepseekweb2api.app.MainActivity
+import com.deepseekweb2api.app.R
 import com.deepseekweb2api.app.client.DeepSeekClient
 import com.deepseekweb2api.app.data.AccountRepository
 import com.deepseekweb2api.app.data.CredentialStore
 
 /**
  * Foreground service that keeps the embedded Ktor API server alive while the
- * app is backgrounded, subject to Android battery restrictions.
+ * app is backgrounded. Subject to Android battery restrictions.
  *
  * The service builds a real [DeepSeekClient] from the first available
  * credential-bearing account in [AccountRepository] so that
@@ -27,7 +28,7 @@ class LocalApiService : Service() {
     private var server: KtorServer? = null
     @Volatile private var isRunningFlag = false
 
-    /** يُرجع true إذا كان الخادم المحلي يعمل حالياً (للاختبار والمراقبة). */
+    /** Returns true if the local server is currently running. */
     fun isServerRunning(): Boolean = isRunningFlag
 
     companion object {
@@ -36,69 +37,119 @@ class LocalApiService : Service() {
         const val PORT = 8080
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "deepseek_api_channel"
+        private const val STOP_REQUEST_CODE = 100
 
         @Volatile
         var accounts: AccountRepository? = null
+
+        /** Tracks if a server is already running to prevent duplicates. */
+        @Volatile
+        var isServerActive: Boolean = false
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_SERVER -> startServerLocked()
             ACTION_STOP_SERVER -> stopServerLocked()
+            else -> {
+                if (!isRunningFlag) {
+                    startServerLocked()
+                }
+            }
         }
-        return START_NOT_STICKY
-    }
-
-    /** Resolve a real DeepSeek client from the currently configured accounts. */
-    private fun resolveClient(): DeepSeekClient? {
-        val repo = accounts ?: return null
-        val account = repo.nextIdleAccount() ?: return null
-        CredentialStore.init(applicationContext)
-        val token = CredentialStore.getToken(account.id) ?: account.token.takeIf { it.isNotBlank() } ?: return null
-        val cookies = CredentialStore.getCookies(account.id) ?: account.cookies
-        return DeepSeekClient.create(token, cookies)
+        return START_STICKY
     }
 
     private fun startServerLocked() {
-        val notification = buildNotification("خادم DeepSeek API يعمل", "متاح على 127.0.0.1:$PORT")
+        if (isRunningFlag || isServerActive) {
+            return // Prevent duplicate servers
+        }
+
+        val notification = buildNotification(
+            title = "DeepSeek Web2API",
+            text = "الخادم يعمل على 127.0.0.1:$PORT",
+            status = "Running"
+        )
         startForeground(NOTIFICATION_ID, notification)
         val client = resolveClient()
         server = KtorServer(PORT, client)
         server?.start()
         isRunningFlag = true
+        isServerActive = true
     }
 
     private fun stopServerLocked() {
         server?.stop()
         server = null
         isRunningFlag = false
-        stopForeground(true)
+        isServerActive = false
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private fun buildNotification(title: String, text: String): Notification {
+    private fun resolveClient(): DeepSeekClient? {
+        val repo = accounts ?: return null
+        val account = repo.firstAccount() ?: return null
+        val token = account.token
+        if (token.isBlank()) return null
+        val cookies = CredentialStore.getCookies(account.id) ?: account.cookies
+        return DeepSeekClient.create(token, cookies)
+    }
+
+    private fun createNotificationChannel() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "DeepSeek API", NotificationManager.IMPORTANCE_LOW
-            )
+                CHANNEL_ID,
+                "DeepSeek API Server",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "DeepSeek Web2API local server status"
+                setShowBadge(false)
+            }
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
                 .createNotificationChannel(channel)
         }
+    }
+
+    private fun buildNotification(title: String, text: String, status: String): Notification {
+        val stopIntent = Intent(this, LocalApiService::class.java).apply {
+            action = ACTION_STOP_SERVER
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, STOP_REQUEST_CODE, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val activityIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-        val pending = PendingIntent.getActivity(
+        val activityPending = PendingIntent.getActivity(
             this, 0, activityIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(text)
+            .setContentText("$text — $status")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(pending)
+            .setContentIntent(activityPending)
             .setOngoing(true)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "إيقاف", stopPendingIntent)
             .build()
     }
 
     override fun onBind(intent: Intent): IBinder? = null
+
+    override fun onDestroy() {
+        server?.stop()
+        server = null
+        isRunningFlag = false
+        isServerActive = false
+        super.onDestroy()
+    }
 }
