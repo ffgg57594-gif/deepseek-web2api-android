@@ -39,6 +39,36 @@ import com.deepseekweb2api.app.ui.screens.StatisticsScreen
 import com.deepseekweb2api.app.ui.theme.DeepSeekTheme
 import kotlinx.coroutines.launch
 
+sealed class Screen {
+    object Dashboard : Screen() {
+        val title = "لوحة المعلومات"
+    }
+    object Accounts : Screen() {
+        val title = "الحسابات"
+    }
+    object AddAccount : Screen() {
+        val title = "إضافة حساب"
+    }
+    object Models : Screen() {
+        val title = "النماذج"
+    }
+    object ApiConfig : Screen() {
+        val title = "إعدادات API"
+    }
+    object ServerControl : Screen() {
+        val title = "التحكم بالخادم"
+    }
+    object Statistics : Screen() {
+        val title = "الإحصائيات"
+    }
+    object Logs : Screen() {
+        val title = "السجلات"
+    }
+    object Settings : Screen() {
+        val title = "الإعدادات"
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigation() {
